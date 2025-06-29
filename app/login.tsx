@@ -96,9 +96,9 @@ export default function Login() {
           >
             <View style={styles.content}>
               <View style={styles.header}>
-                <ThemedText style={styles.title}>🏳️‍🌈 Dimpo Accounting</ThemedText>
+                <ThemedText style={styles.title}>🏳️‍🌈 Dimpo Reads</ThemedText>
                 <ThemedText style={styles.subtitle}> 
-                Master Financial Statements, Ratio Analysis, and more with interactive lessons.
+                The more you read, the more you earn.
                 </ThemedText>
               </View>
 
@@ -150,7 +150,7 @@ export default function Login() {
 
                 <View style={styles.registerContainer}>
                   <ThemedText style={styles.helperText}>
-                    New to Dimpo Accounting? Join our community of learners! 🌍
+                    New to Dimpo Reads? Join our community of readers! 🌍
                   </ThemedText>
                   <TouchableOpacity
                     style={styles.createAccountButton}
@@ -163,7 +163,7 @@ export default function Login() {
 
                 <View style={styles.forgotPasswordContainer}>
                   <ThemedText style={styles.helperText}>
-                    Forgot your password? We'll help you get back to learning! 🔑
+                    Forgot your password? We'll help you get back to reading! 🔑
                   </ThemedText>
                   <TouchableOpacity
                     style={styles.linkButton}

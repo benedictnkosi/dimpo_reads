@@ -20,13 +20,13 @@ async function testSavings() {
     await initializeSavingsWithSampleData();
     console.log('✅ Savings initialized with sample data\n');
 
-    // Get all savings jugs
-    console.log('4. Getting all savings jugs...');
+    // Get all savings jars
+    console.log('4. Getting all savings jars...');
     const allJugs = await getAllSavingsJugs();
     console.log(`📚 Total jugs: ${allJugs.length}\n`);
 
     // Display jugs
-    console.log('5. Savings Jugs:');
+    console.log('5. Savings Jars:');
     allJugs.forEach((jug, index) => {
       console.log(`   ${index + 1}. ${jug.name}`);
       console.log(`      Balance: $${jug.balance.toFixed(2)}`);

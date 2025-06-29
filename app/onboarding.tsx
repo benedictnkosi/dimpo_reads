@@ -9,149 +9,89 @@ import { router } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
 import React, { useEffect, useState } from 'react';
-import { Image, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Image, ScrollView, StyleSheet, TouchableOpacity, View, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
 import { ThemedText } from '../components/ThemedText';
 
 const SUPERHERO_NAMES = [
-  'Spider-Man',
-  'Iron Man',
-  'Captain America',
-  'Black Panther',
-  'Doctor Strange',
-  'Scarlet Witch',
-  'Hawkeye',
-  'Wolverine',
-  'Storm',
-  'Ms. Marvel',
-  'Moon Knight',
-  'Silver Surfer',
-  'She-Hulk',
-  'Daredevil',
-  'Shang-Chi',
-  'Superman',
-  'Batman',
-  'Wonder Woman',
-  'The Flash',
-  'Aquaman',
-  'Green Lantern',
-  'Cyborg',
-  'Martian Manhunter',
-  'Zatanna',
-  'Nightwing',
-  'Shazam',
-  'Hawkman',
-  'Green Arrow',
-  'Blue Beetle',
-  'Batgirl',
-  // Additional superheroes
-  'Thor',
-  'Black Widow',
-  'Hulk',
-  'Ant-Man',
-  'Wasp',
-  'Vision',
-  'Falcon',
-  'Winter Soldier',
-  'Black Canary',
-  'Supergirl',
-  // South African Celebrities
-  'Trevor Noah',
-  'Black Mambazo',
-  'Die Heuwels Fantasties',
-  'Die Antwoord',
-  'Goldfish',
-  'Black Coffee',
-  'DJ Fresh',
-  'Cassper Nyovest',
-  'Aka',
-  'Nasty C',
-  'Sho Madjozi',
-  'Mafikizolo',
-  'Mi Casa',
-  'Freshlyground',
-  'Loyiso Bala',
-  'Lira',
-  'Yvonne Chaka Chaka',
-  'Brenda Fassie',
-  'Lucky Dube',
-  'Johnny Clegg',
-  // American Pop Stars
-  'Taylor Swift',
-  'Beyoncé',
-  'Lady Gaga',
-  'Ariana Grande',
-  'Billie Eilish',
-  'Dua Lipa',
-  'Harry Styles',
-  'Justin Bieber',
-  'Rihanna',
-  'Katy Perry',
-  'Bruno Mars',
-  'The Weeknd',
-  'Post Malone',
-  'Drake',
-  'Ed Sheeran',
-  'Adele',
-  'Miley Cyrus',
-  'Selena Gomez',
-  'Shawn Mendes',
-  'Olivia Rodrigo',
-  // Famous Geniuses and Inventors
-  'Albert Einstein',
-  'Nikola Tesla',
-  'Marie Curie',
-  'Leonardo da Vinci',
-  'Isaac Newton',
-  'Thomas Edison',
-  'Stephen Hawking',
-  'Alan Turing',
-  'Ada Lovelace',
-  'Galileo Galilei',
-  'Archimedes',
-  'Charles Darwin',
-  'James Watt',
-  'Alexander Graham Bell',
-  'Wright Brothers',
-  'Tim Berners-Lee',
-  'Grace Hopper',
-  'Steve Jobs',
-  'Bill Gates',
-  'Elon Musk',
-  // Famous Athletes
-  'Usain Bolt',
-  'Serena Williams',
-  'Michael Jordan',
-  'Muhammad Ali',
-  'Lionel Messi',
-  'Cristiano Ronaldo',
-  'Roger Federer',
-  'Simone Biles',
-  'Michael Phelps',
-  'LeBron James',
-  // Nobel Laureates
-  'Nelson Mandela',
-  'Malala Yousafzai',
-  'Martin Luther King Jr',
-  'Mother Teresa',
-  'Albert Schweitzer',
-  'Wangari Maathai',
-  'Kofi Annan',
-  'Desmond Tutu',
-  'Jimmy Carter',
-  'Barack Obama',
-  // Inspirational Leaders
-  'Mahatma Gandhi',
-  'Winston Churchill',
-  'Abraham Lincoln',
-  'Queen Elizabeth II',
-  'Walt Disney',
-  'Oprah Winfrey',
-  'J.K. Rowling',
-  'Maya Angelou',
-  'Rosa Parks',
-  'Helen Keller'
+  // Reading Heroes
+  'Bookworm',
+  'Story Master',
+  'Word Wizard',
+  'Reading Ranger',
+  'Page Turner',
+  'Literary Lion',
+  'Book Buddy',
+  'Story Seeker',
+  'Word Warrior',
+  'Reading Rocket',
+  // Magical Characters
+  'Wizard Willow',
+  'Fairy Flora',
+  'Dragon Drake',
+  'Unicorn Luna',
+  'Phoenix Finn',
+  'Mermaid Maya',
+  'Pixie Piper',
+  'Witch Wendy',
+  'Sorcerer Sam',
+  'Enchanted Emma',
+  // Adventure Characters
+  'Explorer Eli',
+  'Adventurer Ava',
+  'Treasure Hunter Tom',
+  'Map Master Mia',
+  'Compass Cody',
+  'Journey Jack',
+  'Discovery Daisy',
+  'Quest Queen',
+  'Voyage Victor',
+  'Expedition Ella',
+  // Animal Friends
+  'Lion Leo',
+  'Elephant Ellie',
+  'Giraffe Grace',
+  'Monkey Max',
+  'Penguin Penny',
+  'Dolphin Dan',
+  'Owl Oliver',
+  'Rabbit Ruby',
+  'Tiger Theo',
+  'Bear Bella',
+  // Space Explorers
+  'Astronaut Alex',
+  'Cosmic Clara',
+  'Star Scout',
+  'Galaxy Grace',
+  'Planet Pete',
+  'Rocket Riley',
+  'Space Sam',
+  'Nebula Nina',
+  'Comet Cody',
+  'Meteor Maya',
+  // Nature Friends
+  'Forest Finn',
+  'Ocean Olivia',
+  'Mountain Max',
+  'River Rose',
+  'Desert Dan',
+  'Jungle Jack',
+  'Arctic Ava',
+  'Savanna Sam',
+  'Tundra Theo',
+  'Canyon Clara',
+  // Super Readers
+  'Super Reader',
+  'Captain Book',
+  'The Amazing Reader',
+  'Book Power',
+  'Reading Force',
+  'Story Squad',
+  'Word Team',
+  'Literary League',
+  'Page Patrol',
+  'Chapter Champion'
 ];
 
 function getRandomSuperheroName(): string {
@@ -162,10 +102,10 @@ function getRandomSuperheroName(): string {
 WebBrowser.maybeCompleteAuthSession();
 
 const EMOJIS = {
-  welcome: '📊',
-  topics: '💰',
-  practice: '✍️',
-  examples: '📈',
+  welcome: '📚',
+  topics: '🌟',
+  practice: '🎯',
+  examples: '🎨',
 };
 
 type AvatarImages = {
@@ -342,6 +282,10 @@ export default function OnboardingScreen() {
   const [deviceInfo, setDeviceInfo] = useState<DeviceRegistrationInfo | null>(null);
   const [isCheckingDevice, setIsCheckingDevice] = useState(true);
 
+  const [age, setAge] = useState('');
+  const [agreedAmount, setAgreedAmount] = useState('');
+  const [readingLevel, setReadingLevel] = useState('');
+
   useEffect(() => {
     async function checkAuthAndOnboarding() {
       try {
@@ -382,7 +326,7 @@ export default function OnboardingScreen() {
 
   // Track onboarding screen view
   useEffect(() => {
-    analytics.track('langauges_onboarding_started', {
+    analytics.track('reading_onboarding_started', {
       step_number: step,
       step_name: getStepName(step)
     });
@@ -403,12 +347,14 @@ export default function OnboardingScreen() {
       case 0:
         return 'welcome';
       case 1:
-        return 'topics';
+        return 'earn';
       case 2:
-        return 'practice';
+        return 'quiz';
       case 3:
-        return 'examples';
+        return 'level';
       case 4:
+        return 'deal';
+      case 5:
         return 'avatar';
       default:
         return 'unknown';
@@ -418,17 +364,20 @@ export default function OnboardingScreen() {
   const handleComplete = async () => {
     try {
       // Track onboarding completion through registration
-      analytics.track('langauges_onboarding_completed', {
+      analytics.track('reading_onboarding_completed', {
         method: 'registration',
         avatar_id: selectedAvatar,
-        total_steps: 6
+        total_steps: 5
       });
 
       // Store onboarding data
       await AsyncStorage.setItem('onboardingData', JSON.stringify({
         curriculum: 'CAPS',
         avatar: selectedAvatar,
-        onboardingCompleted: true
+        onboardingCompleted: true,
+        age: age,
+        agreedAmount: agreedAmount,
+        readingLevel: readingLevel
       }));
 
       // Navigate to registration screen
@@ -437,6 +386,9 @@ export default function OnboardingScreen() {
         params: {
           curriculum: 'CAPS',
           avatar: selectedAvatar,
+          age: age,
+          agreedAmount: agreedAmount,
+          readingLevel: readingLevel
         }
       });
 
@@ -459,16 +411,18 @@ export default function OnboardingScreen() {
             {!deviceInfo && (
               <>
                 <View style={{ width: '100%', height: 340, marginBottom: 40, justifyContent: 'center', alignItems: 'center', paddingTop: 40 }}>
-                  <ThemedText style={{ fontSize: 120, paddingTop: 120 }} testID="welcome-emoji">
-                    📊
-                  </ThemedText>
+                  <Image
+                    source={require('../assets/images/dimpo/reading.png')}
+                    style={{ width: 220, height: 220, resizeMode: 'contain', marginTop: 60 }}
+                    testID="welcome-image"
+                  />
                 </View>
                 <View style={[styles.textContainer, { paddingHorizontal: 20 }]} testID="welcome-text-container">
                   <ThemedText style={[styles.welcomeTitle, { fontSize: 24, marginBottom: 24 }]} testID="welcome-title">
-                    Welcome to Dimpo Accounting
+                    Welcome to Dimpo Reads
                   </ThemedText>
                   <ThemedText style={[styles.welcomeText, { fontSize: 20, lineHeight: 32, marginBottom: 24 }]} testID="welcome-description">
-                    📊 Master accounting concepts with fun, interactive lessons! From Financial Statements to Ratio Analysis, we've got you covered.
+                    Read amazing stories and earn pocket money! Start your reading adventure today.
                   </ThemedText>
                 </View>
               </>
@@ -523,68 +477,134 @@ export default function OnboardingScreen() {
         );
       case 1:
         return (
-          <View style={[styles.step, { justifyContent: 'flex-start', paddingTop: 40 }]} testID="topics-step">
+          <View style={[styles.step, { justifyContent: 'flex-start', paddingTop: 40 }]} testID="earn-step">
             <View style={{ width: '100%', height: 340, marginBottom: 40, justifyContent: 'center', alignItems: 'center', paddingTop: 40 }}>
-              <ThemedText style={{ fontSize: 120, paddingTop: 120  }} testID="topics-emoji">
-                💰
+              <ThemedText style={{ fontSize: 120, paddingTop: 120  }} testID="earn-emoji">
+                💸
               </ThemedText>
             </View>
-            <View style={[styles.textContainer, { paddingHorizontal: 20 }]} testID="topics-text-container">
-              <ThemedText style={[styles.welcomeTitle, { fontSize: 26, marginBottom: 20 }]} testID="topics-title">
-                Learn 6 Core Accounting Topics
+            <View style={[styles.textContainer, { paddingHorizontal: 20 }]} testID="earn-text-container">
+              <ThemedText style={[styles.welcomeTitle, { fontSize: 26, marginBottom: 20 }]} testID="earn-title">
+                Read and Earn!
               </ThemedText>
-              <ThemedText style={[styles.welcomeText, { fontSize: 18, lineHeight: 28, marginBottom: 20 }]} testID="topics-description">
-                📊 Master Financial Statements, Cash Flow, Ratio Analysis, and more! Our app makes learning accounting fun and easy.
+              <ThemedText style={[styles.welcomeText, { fontSize: 18, lineHeight: 28, marginBottom: 20 }]} testID="earn-description">
+                Every time you finish a story, you can earn real pocket money. The more you read, the more you earn!
               </ThemedText>
             </View>
           </View>
         );
       case 2:
         return (
-          <View style={[styles.step, { justifyContent: 'flex-start', paddingTop: 40 }]} testID="practice-step">
+          <View style={[styles.step, { justifyContent: 'flex-start', paddingTop: 40 }]} testID="quiz-step">
             <View style={{ width: '100%', height: 340, marginBottom: 40, justifyContent: 'center', alignItems: 'center', paddingTop: 40 }}>
-              <ThemedText style={{ fontSize: 120 , paddingTop: 120 }} testID="practice-emoji">
-                ✍️
+              <ThemedText style={{ fontSize: 120 , paddingTop: 120 }} testID="quiz-emoji">
+                📝
               </ThemedText>
             </View>
-            <View style={[styles.textContainer, { paddingHorizontal: 20 }]} testID="practice-text-container">
-              <ThemedText style={[styles.welcomeTitle, { fontSize: 26, marginBottom: 20 }]} testID="practice-title">
-                Interactive Practice
+            <View style={[styles.textContainer, { paddingHorizontal: 20 }]} testID="quiz-text-container">
+              <ThemedText style={[styles.welcomeTitle, { fontSize: 26, marginBottom: 20 }]} testID="quiz-title">
+                Take a Quick Quiz
               </ThemedText>
-              <ThemedText style={[styles.welcomeText, { fontSize: 18, lineHeight: 28, marginBottom: 20 }]} testID="practice-description">
-                ✍️ Practice calculations, analysis, and problem-solving with our interactive exercises. Perfect your accounting skills!
+              <ThemedText style={[styles.welcomeText, { fontSize: 18, lineHeight: 28, marginBottom: 20 }]} testID="quiz-description">
+                After each chapter, answer a few fun questions to show you've read and understood the story.
               </ThemedText>
             </View>
           </View>
         );
       case 3:
+        const readingLevels = [
+          { key: 'explorer', emoji: '🧭', label: 'Explorer Stories', desc: 'More Pictures, Shorter Words' },
+          { key: 'builder', emoji: '🧱', label: 'Builder Stories', desc: 'Everyday Drama, School Life' },
+          { key: 'challenger', emoji: '🧗‍♂️', label: 'Challenger Stories', desc: 'More Plot, Bigger Words' },
+        ];
         return (
-          <View style={[styles.step, { justifyContent: 'flex-start', paddingTop: 40 }]} testID="examples-step">
-            <View style={{ width: '100%', height: 340, marginBottom: 40, justifyContent: 'center', alignItems: 'center', paddingTop: 50 }}>
-              <ThemedText style={{ fontSize: 120, paddingTop: 120 }} testID="examples-emoji">
-                📈
-              </ThemedText>
-            </View>
-            <View style={[styles.textContainer, { paddingHorizontal: 20 }]} testID="examples-text-container">
-              <ThemedText style={[styles.welcomeTitle, { fontSize: 26, marginBottom: 20 }]} testID="examples-title">
-                Real-World Examples
-              </ThemedText>
-              <ThemedText style={[styles.welcomeText, { fontSize: 18, lineHeight: 28, marginBottom: 20 }]} testID="examples-description">
-                📈 Learn with real-world examples and case studies. Understand how accounting principles apply in practice!
-              </ThemedText>
+          <View style={[styles.step, { justifyContent: 'flex-start', paddingTop: 40 }]} testID="level-step">
+            <View style={[styles.textContainer, { paddingHorizontal: 20 }]} testID="level-text-container">
+              <ThemedText style={[styles.welcomeTitle, { fontSize: 26, marginBottom: 20 }]}>Choose Your Reading Level</ThemedText>
+              {readingLevels.map(level => (
+                <TouchableOpacity
+                  key={level.key}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    backgroundColor: readingLevel === level.key ? '#4F46E5' : 'rgba(255,255,255,0.15)',
+                    borderRadius: 16,
+                    padding: 18,
+                    marginBottom: 16,
+                    borderWidth: readingLevel === level.key ? 2 : 1,
+                    borderColor: readingLevel === level.key ? '#fff' : 'rgba(255,255,255,0.2)',
+                    width: '90%',
+                    alignSelf: 'center'
+                  }}
+                  onPress={() => setReadingLevel(level.key)}
+                  testID={`level-btn-${level.key}`}
+                >
+                  <ThemedText style={{ fontSize: 32, marginRight: 16, paddingTop: 10 }}>{level.emoji}</ThemedText>
+                  <View>
+                    <ThemedText style={{ color: '#fff', fontSize: 18, fontWeight: '700' }}>{level.label}</ThemedText>
+                    <ThemedText style={{ color: '#fff', fontSize: 14 }}>{level.desc}</ThemedText>
+                  </View>
+                </TouchableOpacity>
+              ))}
             </View>
           </View>
         );
       case 4:
+        // Contract/Deal screen
+        const amountOptions = ['0.5','1','2','3','4','5','10','20','50','100','200','500'];
+        // Helper to chunk array into rows of 4
+        const chunkArray = (arr, size) => arr.reduce((acc, _, i) => (i % size ? acc : [...acc, arr.slice(i, i + size)]), []);
+        const amountRows = chunkArray(amountOptions, 4);
+        return (
+          <View style={[styles.step, { justifyContent: 'flex-start', paddingTop: 40 }]} testID="deal-step">
+            <View style={[styles.textContainer, { paddingHorizontal: 20 }]} testID="deal-text-container">
+              <ThemedText style={[styles.welcomeTitle, { fontSize: 26, marginBottom: 20 }]} testID="deal-title">
+                Make a Deal! 🤝
+              </ThemedText>
+              <ThemedText style={[styles.welcomeText, { fontSize: 18, lineHeight: 28, marginBottom: 20 }]} testID="deal-description">
+              Ask your parents: "How much can I earn for every chapter I read?"
+              Each chapter takes just 8–10 minutes — like a snack break for your brain!
+              </ThemedText>
+              <ThemedText style={[styles.welcomeText, { fontSize: 16, marginBottom: 12, color: '#FBBF24' }]}>Select your amount per chapter:</ThemedText>
+              <View style={{ gap: 12, marginTop: 8 }}>
+                {amountRows.map((row, rowIdx) => (
+                  <View key={rowIdx} style={{ flexDirection: 'row', justifyContent: 'center', marginBottom: 8 }}>
+                    {row.map(option => (
+                      <TouchableOpacity
+                        key={option}
+                        style={{
+                          width: 72,
+                          height: 56,
+                          borderRadius: 16,
+                          backgroundColor: agreedAmount === option ? '#4F46E5' : 'rgba(255,255,255,0.15)',
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                          marginHorizontal: 6,
+                          borderWidth: agreedAmount === option ? 2 : 1,
+                          borderColor: agreedAmount === option ? '#fff' : 'rgba(255,255,255,0.2)'
+                        }}
+                        onPress={() => setAgreedAmount(option)}
+                        testID={`amount-btn-${option}`}
+                      >
+                        <ThemedText style={{ color: '#fff', fontSize: 20, fontWeight: '700' }}>{option}</ThemedText>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                ))}
+              </View>
+            </View>
+          </View>
+        );
+      case 5:
         // Avatar selection step, now leads directly to registration
         return (
           <View style={styles.step} testID="avatar-step">
             <View style={styles.textContainer}>
               <ThemedText style={styles.stepTitle}>
-                Choose Your Avatar
+                Choose Your Reading Buddy
               </ThemedText>
               <ThemedText style={styles.stepSubtitle}>
-                Select an avatar to represent you in the app
+                Pick a reading buddy to join you on your journey to earn and learn!
               </ThemedText>
             </View>
 
@@ -627,13 +647,16 @@ export default function OnboardingScreen() {
                     params: {
                       curriculum: 'CAPS',
                       avatar: selectedAvatar,
+                      age: age,
+                      agreedAmount: agreedAmount,
+                      readingLevel: readingLevel
                     }
                   });
                 }}
                 testID="create-account-button"
               >
                 <ThemedText style={styles.authButtonText}>
-                  Create Account
+                  Start Reading Adventure
                 </ThemedText>
               </TouchableOpacity>
             </View>
@@ -656,7 +679,7 @@ export default function OnboardingScreen() {
       case 3:
         return true;
       case 4:
-        return !!selectedAvatar;
+        return !!selectedAvatar && !!age && !!agreedAmount && !!readingLevel;
       default:
         return false;
     }
@@ -696,7 +719,7 @@ export default function OnboardingScreen() {
           {renderStep()}
         </View>
 
-        {(step < 4) && !deviceInfo && (
+        {(step < 5) && !deviceInfo && (
           <View style={styles.buttonContainer} testID="navigation-buttons">
             {step === 0 ? (
               <>
@@ -713,7 +736,7 @@ export default function OnboardingScreen() {
                   style={[styles.button, styles.primaryButton]}
                   onPress={() => {
                     // Track onboarding start
-                    analytics.track('langauges_onboarding_started', {
+                    analytics.track('reading_onboarding_started', {
                       step_number: 1,
                       step_name: 'welcome'
                     });
@@ -722,7 +745,7 @@ export default function OnboardingScreen() {
                   testID="start-onboarding-button"
                 >
                   <ThemedText style={[styles.buttonText, styles.primaryButtonText]}>
-                    Start! 🚀
+                    Let's Read! 📚
                   </ThemedText>
                 </TouchableOpacity>
               </>
@@ -752,7 +775,7 @@ export default function OnboardingScreen() {
                     styles.primaryButtonText,
                     (!canProceed() || !!deviceInfo) && styles.buttonTextDisabled
                   ]}>
-                    Next! 🚀
+                    Continue! ⭐
                   </ThemedText>
                 </TouchableOpacity>
               </>

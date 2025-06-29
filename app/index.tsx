@@ -19,8 +19,8 @@ import {
   getAllSavingsJugs, 
   getSavingsStatistics,
   insertSavingsJug,
-  deleteSavingsJug,
-  getAllCompletedChapters
+  getAllCompletedChapters,
+  getQuickReportData
 } from '@/services/database';
 import { 
   addMoneyToJug,
@@ -44,6 +44,7 @@ interface SavingsJug {
   balance: number;
   created: string;
   updated: string;
+  emoji?: string;
 }
 
 const JUG_EMOJIS = [
@@ -52,7 +53,6 @@ const JUG_EMOJIS = [
   '🎯', // target
   '🌈', // rainbow
 ];
-
 
 // Gradient palettes
 const TOTAL_BALANCE_GRADIENT: [string, string] = ['#fceabb', '#f8b500']; // gold/yellow
@@ -65,6 +65,16 @@ const JUG_GRADIENTS: [string, string][] = [
   ['#ff5858', '#f09819'], // red-orange
   ['#c471f5', '#fa71cd'], // lavender-pink
   ['#30cfd0', '#330867'], // mint-blue
+];
+
+// Emoji categories
+const EMOJI_CATEGORIES = [
+  { label: 'Shopping & Clothes', key: 'shopping_clothes', emojis: ['👖', '👟', '🧢', '👗', '🎒'] },
+  { label: 'Style & Self-care', key: 'style_selfcare', emojis: ['💇‍♀️', '💅', '💄', '🧴'] },
+  { label: 'Fun & Entertainment', key: 'fun_entertainment', emojis: ['🎬', '🍿', '🎮', '🎧'] },
+  { label: 'Treats & Outings', key: 'treats_outings', emojis: ['🍦', '🍕', '🧃', '🥤', '🎡'] },
+  { label: 'Big Goals', key: 'big_goals', emojis: ['🏖️', '📱', '💻', '🎂'] },
+  { label: 'General Savings', key: 'general_savings', emojis: ['🐷', '💰', '🪙', '📈'] },
 ];
 
 export default function HomeScreen() {
@@ -87,10 +97,20 @@ export default function HomeScreen() {
     nextChapter: Book | null;
   } | null>(null);
   
+  // QuickReport data state
+  const [quickReportData, setQuickReportData] = useState<{
+    booksRead: number;
+    totalEarned: number;
+    chaptersRead: number;
+  } | null>(null);
+  
   // Form states
   const [newJugName, setNewJugName] = useState('');
   const [transactionAmount, setTransactionAmount] = useState('');
   const [transactionName, setTransactionName] = useState('');
+
+  // Add state for selected emoji
+  const [selectedEmoji, setSelectedEmoji] = useState('🐷');
 
   const router = useRouter();
   const { colors, isDark } = useTheme();
@@ -117,7 +137,7 @@ export default function HomeScreen() {
       setIsLoading(true);
       setError(null);
 
-      // Load all savings jugs
+      // Load all savings jars
       const allJugs = await getAllSavingsJugs();
       setJugs(allJugs);
 
@@ -183,6 +203,11 @@ export default function HomeScreen() {
       }
       console.log('=== END COMPLETED CHAPTERS LOG ===');
 
+      // Load QuickReport data
+      const reportData = await getQuickReportData();
+      setQuickReportData(reportData);
+      console.log('QuickReport data loaded:', reportData);
+
       setIsLoading(false);
     } catch (error) {
       setError('Failed to load data');
@@ -196,39 +221,20 @@ export default function HomeScreen() {
       Alert.alert('Error', 'Please enter a jug name');
       return;
     }
-
+    if (!selectedEmoji) {
+      Alert.alert('Error', 'Please select an emoji');
+      return;
+    }
     try {
-      await insertSavingsJug({ name: newJugName.trim() });
+      await insertSavingsJug({ name: newJugName.trim(), emoji: selectedEmoji });
       setNewJugName('');
+      setSelectedEmoji('🐷');
       setShowAddModal(false);
       await loadSavingsData();
     } catch (error) {
-      setError('Failed to create savings jug');
-      console.error('Error creating savings jug:', error);
+      setError('Failed to create savings jar');
+      console.error('Error creating savings jar:', error);
     }
-  };
-
-  const handleDeleteJug = async (jug: SavingsJug) => {
-    Alert.alert(
-      'Delete Savings Jug',
-      `Are you sure you want to delete "${jug.name}"? This will also delete all its transactions.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteSavingsJug(jug.id);
-              await loadSavingsData();
-            } catch (error) {
-              setError('Failed to delete savings jug');
-              console.error('Error deleting savings jug:', error);
-            }
-          }
-        }
-      ]
-    );
   };
 
   const handleAddMoney = async () => {
@@ -575,14 +581,6 @@ export default function HomeScreen() {
       color: colors.primary,
       marginLeft: 12,
     },
-    deleteIconTouchable: {
-      marginLeft: 10,
-      padding: 6,
-      borderRadius: 16,
-      justifyContent: 'center',
-      alignItems: 'center',
-      // subtle hover effect
-    },
     jugActionsRow: {
       flexDirection: 'row',
       justifyContent: 'flex-end',
@@ -627,15 +625,20 @@ export default function HomeScreen() {
     modalOverlay: {
       flex: 1,
       backgroundColor: 'rgba(0, 0, 0, 0.5)',
-      justifyContent: 'center',
+      justifyContent: 'flex-end',
       alignItems: 'center',
+      height: '90%',
+      marginTop: 64,
     },
     modalContent: {
       backgroundColor: colors.surface,
       padding: 24,
-      borderRadius: 16,
-      width: '90%',
-      maxWidth: 400,
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      width: '100%',
+      maxWidth: '100%',
+      minHeight: '70%',
+      flex: 1,
     },
     modalTitle: {
       fontSize: 20,
@@ -920,11 +923,11 @@ export default function HomeScreen() {
 
             {/* Empty State or Jugs List */}
             <View style={styles.jugsHeader}>
-              <ThemedText style={styles.jugsTitle}>Your Savings Jugs ({jugs.length})</ThemedText>
+              <ThemedText style={styles.jugsTitle}>Your Savings Jars</ThemedText>
               <Pressable
                 style={styles.addJugButton}
                 onPress={() => {
-                  if (jugs.length >= 3) {
+                  if (jugs.length >= 4) {
                     setShowJugLimitModal(true);
                   } else {
                     setShowAddModal(true);
@@ -937,10 +940,10 @@ export default function HomeScreen() {
             {jugs.length === 0 ? (
               <View style={styles.emptyStateContainer}>
                 <ThemedText style={styles.emptyStateIcon}>🐷</ThemedText>
-                <ThemedText style={styles.emptyStateTitle}>No Savings Jugs Yet</ThemedText>
+                <ThemedText style={styles.emptyStateTitle}>No Savings Jars Yet</ThemedText>
                 <ThemedText style={styles.emptyStateText}>
-                  Create your first savings jug to start tracking your savings goals. 
-                  You can create multiple jugs for different purposes like emergency fund, 
+                  Create your first savings jar to start tracking your savings goals. 
+                  You can create multiple jars for different purposes like emergency fund, 
                   vacation, or a new car.
                 </ThemedText>
               </View>
@@ -957,17 +960,10 @@ export default function HomeScreen() {
                     <Pressable
                       style={({ pressed }) => [styles.jugGridPressable, pressed && styles.jugGridPressed]}
                       android_ripple={{ color: '#e5e7eb' }}
+                      onPress={() => router.push(`/jug-transactions?jugId=${jug.id}`)}
                     >
                       <View style={styles.jugGridHeader}>
-                        <ThemedText style={styles.jugEmoji}>{JUG_EMOJIS[idx % JUG_EMOJIS.length]}</ThemedText>
-                        <Pressable
-                          style={styles.deleteIconTouchable}
-                          onPress={() => handleDeleteJug(jug)}
-                          accessibilityRole="button"
-                          accessibilityLabel={`Delete ${jug.name}`}
-                        >
-                          <Ionicons name="trash-outline" size={20} color="#fff" />
-                        </Pressable>
+                        <ThemedText style={[styles.jugEmoji, { color: '#fff' }]}>{jug.emoji || JUG_EMOJIS[idx % JUG_EMOJIS.length]}</ThemedText>
                       </View>
                       <ThemedText style={[styles.jugGridName, { color: '#fff' }]}>{jug.name}</ThemedText>
                       <ThemedText style={[styles.jugGridBalance, { color: '#fff' }]}>{formatCurrency(jug.balance)}</ThemedText>
@@ -1027,7 +1023,11 @@ export default function HomeScreen() {
               )}
 
               {/* Report Button */}
-              <QuickReport booksRead={12} totalEarned={45.75} minutesRead={1830} />
+              <QuickReport 
+                booksRead={quickReportData?.booksRead || 0} 
+                totalEarned={quickReportData?.totalEarned || 0} 
+                chaptersRead={quickReportData?.chaptersRead || 0} 
+              />
             </View>
 
             <Pressable
@@ -1050,33 +1050,62 @@ export default function HomeScreen() {
       {/* Add Jug Modal */}
       <RNModal visible={showAddModal} transparent animationType="fade">
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <ThemedText style={styles.modalTitle}>Create New Savings Jug</ThemedText>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="Enter jug name..."
-              placeholderTextColor={colors.textSecondary}
-              value={newJugName}
-              onChangeText={setNewJugName}
-            />
-            <View style={styles.modalButtons}>
-              <Pressable 
-                style={[styles.modalButton, styles.modalButtonSecondary]}
-                onPress={() => {
-                  setShowAddModal(false);
-                  setNewJugName('');
-                }}
-              >
-                <ThemedText style={[styles.modalButtonText, styles.modalButtonTextSecondary]}>Cancel</ThemedText>
-              </Pressable>
-              <Pressable 
-                style={[styles.modalButton, styles.modalButtonPrimary]}
-                onPress={handleCreateJug}
-              >
-                <ThemedText style={[styles.modalButtonText, styles.modalButtonTextPrimary]}>Create</ThemedText>
-              </Pressable>
+          <ScrollView style={{ width: '100%', flex: 1, height: '80%' }} contentContainerStyle={{ flexGrow: 1, justifyContent: 'flex-start' }}>
+            <View style={styles.modalContent}>
+              <ThemedText style={styles.modalTitle}>Create New Savings Jar</ThemedText>
+              <ThemedText style={{ fontWeight: '600', fontSize: 16, marginBottom: 8 }}>Choose an emoji</ThemedText>
+              <View style={{ marginBottom: 16}}>
+                <ScrollView>
+                  {EMOJI_CATEGORIES.map(category => (
+                    <View key={category.key} style={{ marginBottom: 6 }}>
+                      <ThemedText style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 2 }}>{category.label}</ThemedText>
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                        {category.emojis.map(emoji => (
+                          <Pressable
+                            key={emoji}
+                            onPress={() => setSelectedEmoji(emoji)}
+                            style={{
+                              padding: 6,
+                              borderRadius: 8,
+                              backgroundColor: selectedEmoji === emoji ? colors.primary : 'transparent',
+                              marginRight: 6,
+                              marginBottom: 2,
+                            }}
+                          >
+                            <ThemedText style={{ fontSize: 28, color: selectedEmoji === emoji ? '#fff' : colors.text }}>{emoji}</ThemedText>
+                          </Pressable>
+                        ))}
+                      </View>
+                    </View>
+                  ))}
+                </ScrollView>
+              </View>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="Enter jug name..."
+                placeholderTextColor={colors.textSecondary}
+                value={newJugName}
+                onChangeText={setNewJugName}
+              />
+              <View style={styles.modalButtons}>
+                <Pressable 
+                  style={[styles.modalButton, styles.modalButtonSecondary]}
+                  onPress={() => {
+                    setShowAddModal(false);
+                    setNewJugName('');
+                  }}
+                >
+                  <ThemedText style={[styles.modalButtonText, styles.modalButtonTextSecondary]}>Cancel</ThemedText>
+                </Pressable>
+                <Pressable 
+                  style={[styles.modalButton, styles.modalButtonPrimary, { backgroundColor: colors.primary }]}
+                  onPress={handleCreateJug}
+                >
+                  <ThemedText style={[styles.modalButtonText, { color: '#fff' }]}>Create</ThemedText>
+                </Pressable>
+              </View>
             </View>
-          </View>
+          </ScrollView>
         </View>
       </RNModal>
 
@@ -1176,13 +1205,21 @@ export default function HomeScreen() {
           <View style={styles.modalContent}>
             <ThemedText style={styles.modalTitle}>Jug Limit Reached</ThemedText>
             <ThemedText style={{ textAlign: 'center', fontSize: 16, marginBottom: 20 }}>
-              You've reached the maximum number of jugs (3).
+              You've reached the maximum number of jugs (4).
             </ThemedText>
             <Pressable
-              style={[styles.modalButton, styles.modalButtonPrimary]}
+              style={{
+                alignSelf: 'center',
+                backgroundColor: colors.primary,
+                paddingVertical: 14,
+                paddingHorizontal: 40,
+                borderRadius: 12,
+                marginTop: 8,
+                minWidth: 120,
+              }}
               onPress={() => setShowJugLimitModal(false)}
             >
-              <ThemedText style={[styles.modalButtonText, styles.modalButtonTextPrimary]}>OK</ThemedText>
+              <ThemedText style={{ color: '#fff', fontWeight: '700', fontSize: 16, textAlign: 'center' }}>OK</ThemedText>
             </Pressable>
           </View>
         </View>

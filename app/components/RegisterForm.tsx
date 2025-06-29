@@ -10,6 +10,7 @@ import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 import Toast from 'react-native-toast-message';
 import { OnboardingData } from '../onboarding';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface RegisterFormProps {
     onboardingData: OnboardingData;
@@ -17,6 +18,9 @@ interface RegisterFormProps {
 }
 
 type RegistrationMethod = 'email' | 'phone';
+
+// After importing OnboardingData, add:
+type OnboardingDataWithAge = OnboardingData & { age?: string; agreedAmount?: string };
 
 export default function RegisterForm({ onboardingData, defaultMethod = 'email' }: RegisterFormProps) {
     const [name, setName] = useState('');
@@ -36,6 +40,8 @@ export default function RegisterForm({ onboardingData, defaultMethod = 'email' }
     const phoneRef = React.useRef<TextInput>(null);
     const passwordRef = React.useRef<TextInput>(null);
     const confirmPasswordRef = React.useRef<TextInput>(null);
+
+    const data: OnboardingDataWithAge = onboardingData;
 
     // Track page view when component mounts
     useEffect(() => {
@@ -149,6 +155,7 @@ export default function RegisterForm({ onboardingData, defaultMethod = 'email' }
                     name: name,
                     email: userEmail,
                     avatar: onboardingData.avatar,
+                    age: data.age || null,
                 };
 
                 // Create new learner using the new API endpoint
@@ -169,7 +176,8 @@ export default function RegisterForm({ onboardingData, defaultMethod = 'email' }
                             terms: "1,2,4", // Default terms for new users
                             curriculum: onboardingData.curriculum || "CAPS", // Use onboarding data or default
                             email: learnerData.email,
-                            avatar: `${learnerData.avatar}.png` // Ensure avatar has .png extension
+                            avatar: `${learnerData.avatar}.png`, // Ensure avatar has .png extension
+                            age: learnerData.age || null,
                         }),
                     });
 
@@ -234,6 +242,10 @@ export default function RegisterForm({ onboardingData, defaultMethod = 'email' }
 
             // Navigate to tabs
             router.replace('/');
+
+            // After successful registration, save age and agreedAmount to AsyncStorage
+            if (data.age) await AsyncStorage.setItem('learnerAge', data.age);
+            if (data.agreedAmount) await AsyncStorage.setItem('learnerAgreedAmount', data.agreedAmount);
         } catch (error) {
             console.error('Registration error:', error);
             

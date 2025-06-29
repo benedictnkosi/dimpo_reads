@@ -22,6 +22,13 @@ const createTables = () => {
   if (!db) return;
 
   try {
+    // Migration: Add emoji column if it doesn't exist
+    db.execSync(`ALTER TABLE savings_jug ADD COLUMN emoji TEXT`);
+  } catch (e) {
+    // Ignore error if column already exists
+  }
+
+  try {
     db.execSync(`
       CREATE TABLE IF NOT EXISTS question_report (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -55,6 +62,7 @@ const createTables = () => {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
         balance REAL NOT NULL DEFAULT 0.0,
+        emoji TEXT,
         created TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
@@ -588,7 +596,7 @@ export const getBookStatistics = (): Promise<{
 };
 
 // Savings Functions
-export const insertSavingsJug = (jugData: { name: string }): Promise<number> => {
+export const insertSavingsJug = (jugData: { name: string; emoji: string }): Promise<number> => {
   return new Promise((resolve, reject) => {
     if (!db) {
       reject(new Error('Database not initialized'));
@@ -596,11 +604,11 @@ export const insertSavingsJug = (jugData: { name: string }): Promise<number> => 
     }
 
     try {
-      const result = db.runSync('INSERT INTO savings_jug (name) VALUES (?)', [jugData.name]);
+      const result = db.runSync('INSERT INTO savings_jug (name, emoji) VALUES (?, ?)', [jugData.name, jugData.emoji]);
       console.log('Savings jug inserted successfully');
       resolve(result.lastInsertRowId);
     } catch (error) {
-      console.error('Error inserting savings jug:', error);
+      console.error('Error inserting savings jar:', error);
       reject(error);
     }
   });
@@ -610,6 +618,7 @@ export const getAllSavingsJugs = (): Promise<Array<{
   id: number;
   name: string;
   balance: number;
+  emoji: string;
   created: string;
   updated: string;
 }>> => {
@@ -624,6 +633,7 @@ export const getAllSavingsJugs = (): Promise<Array<{
         id: number;
         name: string;
         balance: number;
+        emoji: string;
         created: string;
         updated: string;
       }>(
@@ -631,7 +641,7 @@ export const getAllSavingsJugs = (): Promise<Array<{
       );
       resolve(result);
     } catch (error) {
-      console.error('Error fetching savings jugs:', error);
+      console.error('Error fetching savings jars:', error);
       reject(error);
     }
   });
@@ -641,6 +651,7 @@ export const getSavingsJugById = (id: number): Promise<{
   id: number;
   name: string;
   balance: number;
+  emoji: string;
   created: string;
   updated: string;
 } | null> => {
@@ -655,6 +666,7 @@ export const getSavingsJugById = (id: number): Promise<{
         id: number;
         name: string;
         balance: number;
+        emoji: string;
         created: string;
         updated: string;
       }>(
@@ -663,7 +675,7 @@ export const getSavingsJugById = (id: number): Promise<{
       );
       resolve(result || null);
     } catch (error) {
-      console.error('Error fetching savings jug by ID:', error);
+      console.error('Error fetching savings jar by ID:', error);
       reject(error);
     }
   });
@@ -697,7 +709,7 @@ export const updateSavingsJug = (id: number, jugData: { name?: string; balance?:
       console.log('Savings jug updated successfully');
       resolve();
     } catch (error) {
-      console.error('Error updating savings jug:', error);
+      console.error('Error updating savings jar:', error);
       reject(error);
     }
   });
@@ -718,7 +730,7 @@ export const deleteSavingsJug = (id: number): Promise<void> => {
       console.log('Savings jug deleted successfully');
       resolve();
     } catch (error) {
-      console.error('Error deleting savings jug:', error);
+      console.error('Error deleting savings jar:', error);
       reject(error);
     }
   });
@@ -822,7 +834,7 @@ export const getSavingsStatistics = (): Promise<{
   });
 };
 
-// Update savings jug balance
+// Update savings jar balance
 export const updateSavingsJugBalance = (id: number, balance: number): Promise<void> => {
   return new Promise((resolve, reject) => {
     if (!db) {
@@ -835,7 +847,7 @@ export const updateSavingsJugBalance = (id: number, balance: number): Promise<vo
       console.log('Savings jug balance updated successfully');
       resolve();
     } catch (error) {
-      console.error('Error updating savings jug balance:', error);
+      console.error('Error updating savings jar balance:', error);
       reject(error);
     }
   });
@@ -875,7 +887,7 @@ export const getAllSavingsTransactions = (): Promise<Array<{
   });
 };
 
-// Get savings jug with transactions
+// Get savings jar with transactions
 export const getSavingsJugWithTransactions = (jugId: number): Promise<{
   jug: {
     id: number;
@@ -933,7 +945,7 @@ export const getSavingsJugWithTransactions = (jugId: number): Promise<{
         transactions
       });
     } catch (error) {
-      console.error('Error fetching savings jug with transactions:', error);
+      console.error('Error fetching savings jar with transactions:', error);
       reject(error);
     }
   });
@@ -1374,6 +1386,47 @@ export const getNextChapter = (bookId: string, currentChapterNumber: number): Pr
       resolve(result || null);
     } catch (error) {
       console.error('Error fetching next chapter:', error);
+      reject(error);
+    }
+  });
+};
+
+export const getQuickReportData = (): Promise<{
+  booksRead: number;
+  totalEarned: number;
+  chaptersRead: number;
+}> => {
+  return new Promise((resolve, reject) => {
+    if (!db) {
+      reject(new Error('Database not initialized'));
+      return;
+    }
+
+    try {
+      // Get completed chapters count
+      const chaptersResult = db.getFirstSync<{ count: number }>(
+        'SELECT COUNT(*) as count FROM chapter_completion'
+      );
+      
+      // Get total earned from all positive savings transactions
+      const earningsResult = db.getFirstSync<{ total: number }>(
+        'SELECT COALESCE(SUM(amount), 0) as total FROM savings_transaction WHERE amount > 0'
+      );
+      
+      // Get unique books read (distinct book_ids from completed chapters)
+      const booksResult = db.getFirstSync<{ count: number }>(
+        `SELECT COUNT(DISTINCT b.book_id) as count 
+         FROM chapter_completion cc
+         JOIN book b ON cc.chapter_id = b.id`
+      );
+      
+      resolve({
+        booksRead: booksResult?.count || 0,
+        totalEarned: earningsResult?.total || 0,
+        chaptersRead: chaptersResult?.count || 0
+      });
+    } catch (error) {
+      console.error('Error fetching QuickReport data:', error);
       reject(error);
     }
   });

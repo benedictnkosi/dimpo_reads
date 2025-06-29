@@ -4,7 +4,7 @@ This document explains how to use the SQLite database setup for the Dimpo Reads 
 
 ## Overview
 
-The app uses `expo-sqlite` to store books and savings data locally on the device. The database includes tables for storing books, savings jugs, and savings transactions.
+The app uses `expo-sqlite` to store books and savings data locally on the device. The database includes tables for storing books, savings jars, and savings transactions.
 
 ## Automatic Database Initialization
 
@@ -68,7 +68,7 @@ CREATE TABLE savings_jug (
 
 **Columns:**
 - `id`: Auto-incrementing primary key
-- `name`: The name of the savings jug (e.g., "Emergency Fund", "Vacation Fund")
+- `name`: The name of the savings jar (e.g., "Emergency Fund", "Vacation Fund")
 - `balance`: Current balance in the jug
 - `created`: Timestamp when the jug was created
 - `updated`: Timestamp when the jug was last updated
@@ -123,7 +123,7 @@ The database comes with sample books and savings data:
 - Different reading levels from Beginner to Advanced
 - Sample content and quizzes for each chapter
 
-### Sample Savings Jugs
+### Sample Savings Jars
 - Emergency Fund
 - Vacation Fund
 - New Car Fund
@@ -151,7 +151,7 @@ await insertBook({
 });
 ```
 
-### Creating a new savings jug
+### Creating a new savings jar
 
 ```javascript
 import { insertSavingsJug } from '@/services/database';
@@ -159,7 +159,7 @@ import { insertSavingsJug } from '@/services/database';
 const jugId = await insertSavingsJug({ name: 'New Goal' });
 ```
 
-### Adding money to a savings jug
+### Adding money to a savings jar
 
 ```javascript
 import { addMoneyToJug } from '@/services/savingsService';
@@ -199,12 +199,12 @@ The database service provides the following main functions:
 - `getBookStatistics()` - Get book statistics
 
 ### Savings Functions
-- `insertSavingsJug()` - Create a new savings jug
-- `getAllSavingsJugs()` - Get all savings jugs
-- `getSavingsJugById()` - Get a specific savings jug
+- `insertSavingsJug()` - Create a new savings jar
+- `getAllSavingsJugs()` - Get all savings jars
+- `getSavingsJugById()` - Get a specific savings jar
 - `updateSavingsJug()` - Update jug information
 - `updateSavingsJugBalance()` - Update jug balance
-- `deleteSavingsJug()` - Delete a savings jug
+- `deleteSavingsJug()` - Delete a savings jar
 - `insertSavingsTransaction()` - Add a transaction
 - `getSavingsTransactionsByJugId()` - Get transactions for a jug
 - `getAllSavingsTransactions()` - Get all transactions

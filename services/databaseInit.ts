@@ -2,7 +2,7 @@ import { initDatabase, insertBook, insertSavingsJug, insertSavingsTransaction } 
 import booksData from '@/assets/books.json';
 import { initializeSavingsWithSampleData } from './savingsService';
 
-// Sample savings jugs data
+// Sample savings jars data
 const SAMPLE_SAVINGS_JUGS = [
   { name: 'Emergency Fund' },
   { name: 'Vacation Fund' },
@@ -80,14 +80,14 @@ const loadSavingsIntoDatabase = async () => {
   try {
     console.log('Loading savings data into database...');
     
-    // Check if savings jugs already exist
+    // Check if savings jars already exist
     const existingJugs = await getAllSavingsJugs();
     if (existingJugs.length > 0) {
       console.log('Savings data already exists in database, skipping...');
       return;
     }
     
-    // Insert sample savings jugs
+    // Insert sample savings jars
     for (const jug of SAMPLE_SAVINGS_JUGS) {
       await insertSavingsJug({ name: jug.name });
     }
@@ -107,7 +107,7 @@ const loadSavingsIntoDatabase = async () => {
       }
     }
     
-    console.log(`Loaded ${SAMPLE_SAVINGS_JUGS.length} savings jugs and ${SAMPLE_TRANSACTIONS.length} transactions into database`);
+    console.log(`Loaded ${SAMPLE_SAVINGS_JUGS.length} savings jars and ${SAMPLE_TRANSACTIONS.length} transactions into database`);
   } catch (error) {
     console.error('Error loading savings data into database:', error);
     throw error;

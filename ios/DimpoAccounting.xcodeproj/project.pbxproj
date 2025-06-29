@@ -427,7 +427,7 @@
 					"-lc++",
 				);
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_DEBUG";
-				PRODUCT_BUNDLE_IDENTIFIER = com.dimpoaccounting;
+				PRODUCT_BUNDLE_IDENTIFIER = com.dimporeads;
 				PRODUCT_NAME = DimpoAccounting;
 				SWIFT_OBJC_BRIDGING_HEADER = "DimpoAccounting/DimpoAccounting-Bridging-Header.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -458,7 +458,7 @@
 					"-lc++",
 				);
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_RELEASE";
-				PRODUCT_BUNDLE_IDENTIFIER = com.dimpoaccounting;
+				PRODUCT_BUNDLE_IDENTIFIER = com.dimporeads;
 				PRODUCT_NAME = DimpoAccounting;
 				SWIFT_OBJC_BRIDGING_HEADER = "DimpoAccounting/DimpoAccounting-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;

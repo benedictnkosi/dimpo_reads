@@ -1,5 +1,5 @@
 export default {
-  name: 'Dimpo Accounting',
+  name: 'Dimpo Reads',
   slug: 'exam-quiz',
   version: '1',
   orientation: 'portrait',
@@ -9,7 +9,7 @@ export default {
   newArchEnabled: false,
   ios: {
     supportsTablet: true,
-    bundleIdentifier: 'com.dimpoaccounting',
+    bundleIdentifier: 'com.dimporeads',
     buildNumber: '1.0.2',
     googleServicesFile: './GoogleService-Info.plist',
     infoPlist: {
@@ -20,7 +20,7 @@ export default {
     "storeKitConfiguration": "./ios/DimpoAccounting/Configuration.storekit"
   },
   android: {
-    package: 'com.dimpoaccounting',
+    package: 'com.dimporeads',
     "intentFilters": [
       {
         "action": "VIEW",

@@ -1,6 +1,6 @@
 # Device Registration
 
-This document describes the device registration feature implemented in the Dimpo Accounting app.
+This document describes the device registration feature implemented in the Dimpo Reads app.
 
 ## Overview
 

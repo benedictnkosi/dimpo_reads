@@ -5,13 +5,13 @@ import { LinearGradient } from 'expo-linear-gradient';
 interface QuickReportProps {
   booksRead: number;
   totalEarned: number;
-  minutesRead: number;
+  chaptersRead: number;
 }
 
-export const QuickReport: React.FC<QuickReportProps> = ({ booksRead, totalEarned, minutesRead }) => {
+export const QuickReport: React.FC<QuickReportProps> = ({ booksRead, totalEarned, chaptersRead }) => {
   const cards = [
     {
-      icon: '📖',
+      icon: '📚',
       label: 'Books Read',
       value: booksRead,
     },
@@ -21,9 +21,9 @@ export const QuickReport: React.FC<QuickReportProps> = ({ booksRead, totalEarned
       value: `$${totalEarned.toFixed(2)}`,
     },
     {
-      icon: '⏰',
-      label: 'Minutes Read',
-      value: minutesRead.toLocaleString(),
+      icon: '📖',
+      label: 'Chapters Read',
+      value: chaptersRead.toLocaleString(),
     },
   ];
 

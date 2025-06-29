@@ -146,13 +146,13 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, onQuizStart
         }
     }
 
-    // Load savings jugs for jar selection
+    // Load savings jars for jar selection
     const loadSavingsJugs = async () => {
         try {
             const jugs = await getAllSavingsJugs();
             setSavingsJugs(jugs);
         } catch (error) {
-            console.error('Error loading savings jugs:', error);
+            console.error('Error loading savings jars:', error);
         }
     };
 

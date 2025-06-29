@@ -5,7 +5,7 @@ A React Native app for reading books and managing savings goals.
 ## Features
 
 - **📚 Book Library**: Explore books across different genres and reading levels
-- **💰 Savings Jugs**: Create multiple savings goals and track your progress
+- **💰 Savings Jars**: Create multiple savings goals and track your progress
 - **📊 Progress Tracking**: Monitor your reading and savings achievements
 - **🎯 Goal Setting**: Set and achieve your financial and reading goals
 
@@ -94,7 +94,7 @@ dimpo_reads/
 - Track reading progress
 
 ### Savings Management
-- Create multiple savings jugs for different goals
+- Create multiple savings jars for different goals
 - Add and remove money with transaction tracking
 - View savings statistics and progress
 - Transfer money between jugs

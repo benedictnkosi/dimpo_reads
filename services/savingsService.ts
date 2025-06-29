@@ -12,7 +12,7 @@ import {
   clearAllSavingsData
 } from './database';
 
-// Sample savings jugs data
+// Sample savings jars data
 const SAMPLE_SAVINGS_JUGS = [
   {
     name: 'Emergency Fund',
@@ -65,7 +65,7 @@ export const initializeSavingsWithSampleData = async (): Promise<void> => {
   try {
     console.log('[SavingsService] Initializing savings with sample data...');
     
-    // Check if savings jugs already exist
+    // Check if savings jars already exist
     const existingJugs = await getAllSavingsJugs();
     
     if (existingJugs.length > 0) {
@@ -73,13 +73,13 @@ export const initializeSavingsWithSampleData = async (): Promise<void> => {
       return;
     }
     
-    // Create sample savings jugs
+    // Create sample savings jars
     const jugIds: { [key: string]: number } = {};
     
     for (const jug of SAMPLE_SAVINGS_JUGS) {
       const jugId = await insertSavingsJug(jug);
       jugIds[jug.name] = jugId;
-      console.log(`[SavingsService] Created savings jug: ${jug.name} (ID: ${jugId})`);
+      console.log(`[SavingsService] Created savings jar: ${jug.name} (ID: ${jugId})`);
     }
     
     // Add sample transactions
@@ -114,7 +114,7 @@ export const initializeSavingsWithSampleData = async (): Promise<void> => {
   }
 };
 
-// Add money to a savings jug
+// Add money to a savings jar
 export const addMoneyToJug = async (jugId: number, amount: number, transactionName: string): Promise<void> => {
   try {
     // Get current jug
@@ -141,7 +141,7 @@ export const addMoneyToJug = async (jugId: number, amount: number, transactionNa
   }
 };
 
-// Remove money from a savings jug
+// Remove money from a savings jar
 export const removeMoneyFromJug = async (jugId: number, amount: number, transactionName: string): Promise<void> => {
   try {
     // Get current jug
@@ -151,7 +151,7 @@ export const removeMoneyFromJug = async (jugId: number, amount: number, transact
     }
     
     if (jug.balance < amount) {
-      throw new Error('Insufficient funds in savings jug');
+      throw new Error('Insufficient funds in savings jar');
     }
     
     // Add transaction (negative amount)
@@ -185,11 +185,11 @@ export const transferBetweenJugs = async (
     const toJug = await getSavingsJugById(toJugId);
     
     if (!fromJug || !toJug) {
-      throw new Error('One or both savings jugs not found');
+      throw new Error('One or both savings jars not found');
     }
     
     if (fromJug.balance < amount) {
-      throw new Error('Insufficient funds in source savings jug');
+      throw new Error('Insufficient funds in source savings jar');
     }
     
     // Remove from source jug

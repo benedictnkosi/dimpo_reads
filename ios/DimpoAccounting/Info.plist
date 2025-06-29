@@ -7,7 +7,7 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>$(DEVELOPMENT_LANGUAGE)</string>
     <key>CFBundleDisplayName</key>
-    <string>Dimpo Accounting</string>
+    <string>Dimpo Reads</string>
     <key>CFBundleExecutable</key>
     <string>$(EXECUTABLE_NAME)</string>
     <key>CFBundleIdentifier</key>
@@ -28,7 +28,7 @@
         <key>CFBundleURLSchemes</key>
         <array>
           <string>dimpoaccounting</string>
-          <string>com.dimpoaccounting</string>
+          <string>com.dimporeads</string>
         </array>
       </dict>
       <dict>

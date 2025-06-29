@@ -19,7 +19,7 @@ export default function RegisterScreen() {
                 <View style={styles.content} testID="register-content">
                     <View style={styles.header} testID="register-header">
                         <ThemedText style={styles.title} testID="register-title">Create Account</ThemedText>
-                        <ThemedText style={styles.subtitle} testID="register-subtitle">Join thousands of students acing their exams! 🎯</ThemedText>
+                        <ThemedText style={styles.subtitle} testID="register-subtitle">Join thousands of readers earning money! 🎯</ThemedText>
                     </View>
 
                     <RegisterForm onboardingData={params as any} />

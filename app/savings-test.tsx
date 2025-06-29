@@ -64,7 +64,7 @@ export default function SavingsTestScreen() {
       setLoading(true);
       setError(null);
 
-      // Load all savings jugs
+      // Load all savings jars
       const allJugs = await getAllSavingsJugs();
       setJugs(allJugs);
 
@@ -108,19 +108,19 @@ export default function SavingsTestScreen() {
     }
 
     try {
-      await insertSavingsJug({ name: newJugName.trim() });
+      await insertSavingsJug({ name: newJugName.trim(), emoji: '💰' });
       setNewJugName('');
       await loadSavingsData();
     } catch (error) {
-      setError('Failed to create savings jug');
-      console.error('Error creating savings jug:', error);
+      setError('Failed to create savings jar');
+      console.error('Error creating savings jar:', error);
     }
   };
 
   const handleDeleteJug = async (jugId: number) => {
     Alert.alert(
-      'Delete Savings Jug',
-      'Are you sure you want to delete this savings jug? This will also delete all its transactions.',
+      'Delete Savings Jar',
+      'Are you sure you want to delete this savings jar? This will also delete all its transactions.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -131,8 +131,8 @@ export default function SavingsTestScreen() {
               await deleteSavingsJug(jugId);
               await loadSavingsData();
             } catch (error) {
-              setError('Failed to delete savings jug');
-              console.error('Error deleting savings jug:', error);
+              setError('Failed to delete savings jar');
+              console.error('Error deleting savings jar:', error);
             }
           }
         }
@@ -390,7 +390,7 @@ export default function SavingsTestScreen() {
 
           {/* Create New Jug */}
           <View style={styles.section}>
-            <ThemedText style={styles.sectionTitle}>➕ Create New Savings Jug</ThemedText>
+            <ThemedText style={styles.sectionTitle}>➕ Create New Savings Jar</ThemedText>
             <View style={styles.formSection}>
               <TextInput
                 style={styles.input}
@@ -443,9 +443,9 @@ export default function SavingsTestScreen() {
             </View>
           </View>
 
-          {/* Savings Jugs */}
+          {/* Savings Jars */}
           <View style={styles.section}>
-            <ThemedText style={styles.sectionTitle}>🏺 Savings Jugs ({jugs.length})</ThemedText>
+            <ThemedText style={styles.sectionTitle}>🏺 Savings Jars ({jugs.length})</ThemedText>
             {jugs.map((jug) => (
               <View key={jug.id} style={styles.jugCard}>
                 <View style={styles.jugHeader}>

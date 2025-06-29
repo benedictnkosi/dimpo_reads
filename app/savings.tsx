@@ -53,7 +53,7 @@ export default function SavingsScreen() {
       setLoading(true);
       setError(null);
 
-      // Load all savings jugs
+      // Load all savings jars
       const allJugs = await getAllSavingsJugs();
       setJugs(allJugs);
 
@@ -76,19 +76,19 @@ export default function SavingsScreen() {
     }
 
     try {
-      await insertSavingsJug({ name: newJugName.trim() });
+      await insertSavingsJug({ name: newJugName.trim(), emoji: '💰' });
       setNewJugName('');
       setShowAddModal(false);
       await loadSavingsData();
     } catch (error) {
-      setError('Failed to create savings jug');
-      console.error('Error creating savings jug:', error);
+      setError('Failed to create savings jar');
+      console.error('Error creating savings jar:', error);
     }
   };
 
   const handleDeleteJug = async (jug: SavingsJug) => {
     Alert.alert(
-      'Delete Savings Jug',
+      'Delete Savings Jar',
       `Are you sure you want to delete "${jug.name}"? This will also delete all its transactions.`,
       [
         { text: 'Cancel', style: 'cancel' },
@@ -100,8 +100,8 @@ export default function SavingsScreen() {
               await deleteSavingsJug(jug.id);
               await loadSavingsData();
             } catch (error) {
-              setError('Failed to delete savings jug');
-              console.error('Error deleting savings jug:', error);
+              setError('Failed to delete savings jar');
+              console.error('Error deleting savings jar:', error);
             }
           }
         }
@@ -410,7 +410,7 @@ export default function SavingsScreen() {
   return (
     <ScrollView style={styles.container}>
       <View style={styles.header}>
-        <ThemedText style={styles.title}>💰 Savings Jugs</ThemedText>
+        <ThemedText style={styles.title}>💰 Savings Jars</ThemedText>
         <ThemedText style={styles.subtitle}>Manage your savings goals</ThemedText>
       </View>
 
@@ -447,20 +447,20 @@ export default function SavingsScreen() {
           {jugs.length === 0 ? (
             <View style={styles.emptyStateContainer}>
               <ThemedText style={styles.emptyStateIcon}>🏺</ThemedText>
-              <ThemedText style={styles.emptyStateTitle}>No Savings Jugs Yet</ThemedText>
+              <ThemedText style={styles.emptyStateTitle}>No Savings Jars Yet</ThemedText>
               <ThemedText style={styles.emptyStateText}>
-                Create your first savings jug to start tracking your savings goals. 
+                Create your first savings jar to start tracking your savings goals. 
                 You can create multiple jugs for different purposes like emergency fund, 
                 vacation, or a new car.
               </ThemedText>
               <Pressable style={styles.bigButton} onPress={() => setShowAddModal(true)}>
-                <ThemedText style={styles.bigButtonText}>➕ Create Your First Savings Jug</ThemedText>
+                <ThemedText style={styles.bigButtonText}>➕ Create Your First Savings Jar</ThemedText>
               </Pressable>
             </View>
           ) : (
             <View style={styles.jugsContainer}>
               <View style={styles.jugsHeader}>
-                <ThemedText style={styles.jugsTitle}>Your Savings Jugs ({jugs.length})</ThemedText>
+                <ThemedText style={styles.jugsTitle}>Your Savings Jars ({jugs.length})</ThemedText>
                 <Pressable style={styles.smallButton} onPress={() => setShowAddModal(true)}>
                   <ThemedText style={styles.smallButtonText}>➕ Add Jug</ThemedText>
                 </Pressable>
@@ -512,7 +512,7 @@ export default function SavingsScreen() {
       <Modal visible={showAddModal} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <ThemedText style={styles.modalTitle}>Create New Savings Jug</ThemedText>
+            <ThemedText style={styles.modalTitle}>Create New Savings Jar</ThemedText>
             <TextInput
               style={styles.modalInput}
               placeholder="Enter jug name..."
