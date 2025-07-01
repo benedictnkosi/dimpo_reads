@@ -1,11 +1,10 @@
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Share, StyleSheet, View, TextInput, Alert, Modal as RNModal } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from '@react-navigation/native';
 import React from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { Header } from '@/components/Header';
 import { ThemedText } from '@/components/ThemedText';
@@ -13,6 +12,8 @@ import { ThemedView } from '@/components/ThemedView';
 import { DatabaseLoading } from '@/components/DatabaseLoading';
 import { ContinueReadingCard } from './components/ContinueReadingCard';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { useRevenueCat } from '@/contexts/RevenueCatContext';
 import { analytics } from '@/services/analytics';
 import { useDatabase } from '@/hooks/useDatabase';
 import { 
@@ -20,7 +21,17 @@ import {
   getSavingsStatistics,
   insertSavingsJug,
   getAllCompletedChapters,
-  getQuickReportData
+  getUserCompletedChaptersWithScore,
+  getUserCompletedBooksCount,
+  getQuickReportData,
+  getQuickReportDataByPeriod,
+  initializeReadingLevel,
+  getCurrentReadingLevel,
+  getAllBooks,
+  calculateReadingStreak,
+  getReadingStreakDetails,
+  isCompletedChaptersTableEmpty,
+  restoreCompletedChapters
 } from '@/services/database';
 import { 
   addMoneyToJug,
@@ -29,6 +40,7 @@ import {
 import { 
   getCurrentReadingStatus,
   startRandomReading,
+  startRandomUncompletedReading,
   isCurrentlyReading,
   getCurrentBookDetails,
   getSmartBookDetails,
@@ -37,6 +49,8 @@ import {
   type Book
 } from '@/services/readingService';
 import { QuickReport } from './components/QuickReport';
+import { Paywall } from './components/Paywall';
+import { HOST_URL } from '@/config/api';
 
 interface SavingsJug {
   id: number;
@@ -99,9 +113,21 @@ export default function HomeScreen() {
   
   // QuickReport data state
   const [quickReportData, setQuickReportData] = useState<{
-    booksRead: number;
-    totalEarned: number;
-    chaptersRead: number;
+    lifetime: {
+      booksRead: number;
+      totalEarned: number;
+      chaptersRead: number;
+    };
+    week: {
+      booksRead: number;
+      totalEarned: number;
+      chaptersRead: number;
+    };
+    month: {
+      booksRead: number;
+      totalEarned: number;
+      chaptersRead: number;
+    };
   } | null>(null);
   
   // Form states
@@ -112,14 +138,144 @@ export default function HomeScreen() {
   // Add state for selected emoji
   const [selectedEmoji, setSelectedEmoji] = useState('🐷');
 
+  // Add state for reading level
+  const [currentReadingLevel, setCurrentReadingLevel] = useState<string>('Explorer');
+
+  const [continueImage, setContinueImage] = useState<string>('');
+
+  // Add state for reading streak
+  const [readingStreak, setReadingStreak] = useState<{
+    currentStreak: number;
+    longestStreak: number;
+    totalDaysRead: number;
+    lastActivityDate: string | null;
+  } | null>(null);
+
+  // Add state for tracking completed books and paywall
+  const [completedChaptersCount, setCompletedChaptersCount] = useState<number>(0);
+  const [showChapterLimitPaywall, setShowChapterLimitPaywall] = useState(false);
+  const [showUpgradeModal5, setShowUpgradeModal5] = useState(false);
+  const [showUpgradeModal3, setShowUpgradeModal3] = useState(false);
+
   const router = useRouter();
   const { colors, isDark } = useTheme();
   const { isInitialized, isLoading: isDatabaseLoading } = useDatabase();
+  const { user } = useAuth();
+  const { isPremium, showPaywall } = useRevenueCat();
+
+  // Initialize reading level if not set
+  const initializeUserReadingLevel = async () => {
+    try {
+      await initializeReadingLevel();
+    } catch (error) {
+      console.error('Error initializing reading level in HomeScreen:', error);
+    }
+  };
+
+  // Load reading level
+  const loadReadingLevel = async () => {
+    try {
+      const readingLevel = await getCurrentReadingLevel();
+      setCurrentReadingLevel(readingLevel);
+    } catch (error) {
+      console.error('Error loading reading level:', error);
+      setCurrentReadingLevel('Explorer');
+    }
+  };
+
+  // Count chapters per book and log the results
+  const countChaptersPerBook = async () => {
+    try {
+      const allBooks = await getAllBooks();
+      
+      // Group books by book_id and count chapters
+      const chaptersPerBook = allBooks.reduce((acc, book) => {
+        if (!acc[book.book_id]) {
+          acc[book.book_id] = {
+            book_id: book.book_id,
+            genre: book.genre,
+            sub_genre: book.sub_genre,
+            reading_level: book.reading_level,
+            chapter_count: 0,
+            chapters: []
+          };
+        }
+        acc[book.book_id].chapter_count++;
+        acc[book.book_id].chapters.push({
+          chapter_number: book.chapter_number,
+          chapter_name: book.chapter_name
+        });
+        return acc;
+      }, {} as Record<string, {
+        book_id: string;
+        genre: string;
+        sub_genre: string;
+        reading_level: string;
+        chapter_count: number;
+        chapters: Array<{ chapter_number: number; chapter_name: string; }>;
+      }>);
+
+      // Log the chapter counts
+      console.log('=== CHAPTERS PER BOOK COUNT ===');
+      console.log(`Total unique books: ${Object.keys(chaptersPerBook).length}`);
+      console.log(`Total chapters: ${allBooks.length}`);
+      
+      // Sort books by chapter count (descending)
+      const sortedBooks = Object.values(chaptersPerBook).sort((a, b) => b.chapter_count - a.chapter_count);
+      
+      sortedBooks.forEach((book, index) => {
+        console.log(`${index + 1}. ${book.book_id} (${book.genre}/${book.sub_genre})`);
+        console.log(`   Reading Level: ${book.reading_level}`);
+        console.log(`   Chapters: ${book.chapter_count}`);
+        console.log(`   Chapter List: ${book.chapters.map(c => `${c.chapter_number}:${c.chapter_name}`).join(', ')}`);
+        console.log('---');
+      });
+      
+      // Summary statistics
+      const avgChaptersPerBook = allBooks.length / Object.keys(chaptersPerBook).length;
+      const maxChapters = Math.max(...sortedBooks.map(b => b.chapter_count));
+      const minChapters = Math.min(...sortedBooks.map(b => b.chapter_count));
+      
+      console.log('Summary:');
+      console.log(`- Average chapters per book: ${avgChaptersPerBook.toFixed(1)}`);
+      console.log(`- Most chapters in a book: ${maxChapters}`);
+      console.log(`- Least chapters in a book: ${minChapters}`);
+      console.log('=== END CHAPTERS PER BOOK COUNT ===');
+      
+    } catch (error) {
+      console.error('Error counting chapters per book:', error);
+    }
+  };
+
+  // Add function to refresh book count and check paywall
+  const refreshChapterCountAndCheckPaywall = async () => {
+    if (user?.uid && !isPremium) {
+      const chaptersCount = await getUserCompletedChaptersWithScore(user.uid);
+      setCompletedChaptersCount(chaptersCount.length);
+      console.log('Refreshed completed chapters count:', chaptersCount.length);
+      
+      // Show upgrade modal at 5 chapters remaining (5 completed)
+      if (chaptersCount.length === 5) {
+        setShowUpgradeModal5(true);
+      }
+      
+      // Show upgrade modal at 3 chapters remaining (7 completed)
+      if (chaptersCount.length === 7) {
+        setShowUpgradeModal3(true);
+      }
+      
+      // Show paywall if user has completed 10 or more chapters
+      if (chaptersCount.length >= 10) {
+        setShowChapterLimitPaywall(true);
+      }
+    }
+  };
 
   // Load savings data
   useEffect(() => {
     if (isInitialized && !isDatabaseLoading) {
       loadSavingsData();
+      initializeUserReadingLevel(); // Initialize reading level
     }
   }, [isInitialized, isDatabaseLoading]);
 
@@ -128,18 +284,55 @@ export default function HomeScreen() {
     React.useCallback(() => {
       if (isInitialized && !isDatabaseLoading) {
         loadSavingsData();
+        initializeUserReadingLevel(); // Initialize reading level on focus
+        refreshChapterCountAndCheckPaywall(); // Refresh book count and check paywall
       }
     }, [isInitialized, isDatabaseLoading])
   );
 
   const loadSavingsData = async () => {
     try {
+      console.log('Loading savings data...');
       setIsLoading(true);
       setError(null);
 
+      // Check if completed chapters table is empty and restore from API if needed
+      if (user?.uid) {
+        const isEmpty = await isCompletedChaptersTableEmpty();
+        if (isEmpty) {
+          console.log('Completed chapters table is empty, attempting to restore from API...');
+          try {
+            await restoreCompletedChapters(user.uid);
+            console.log('Completed chapters restored successfully');
+          } catch (restoreError) {
+            console.error('Error restoring completed chapters:', restoreError);
+            // Continue loading other data even if restoration fails
+          }
+        }
+      }else{
+        console.log('User not found');
+      }
+
       // Load all savings jars
       const allJugs = await getAllSavingsJugs();
-      setJugs(allJugs);
+      
+      // If no jars exist, create a generic savings jar
+      if (allJugs.length === 0) {
+        try {
+          await insertSavingsJug({ 
+            name: 'My Piggy Bank', 
+            emoji: '🐷' 
+          });
+          // Reload the jars after creating the generic one
+          const updatedJugs = await getAllSavingsJugs();
+          setJugs(updatedJugs);
+        } catch (createError) {
+          console.error('Error creating generic savings jar:', createError);
+          setJugs(allJugs); // Still set the empty array if creation fails
+        }
+      } else {
+        setJugs(allJugs);
+      }
 
       // Load statistics
       const stats = await getSavingsStatistics();
@@ -151,31 +344,47 @@ export default function HomeScreen() {
 
       // Load smart book details if there's an active reading session
       if (readingStatus) {
-        const smartDetails = await getSmartBookDetails();
+        const smartDetails = await getSmartBookDetails(user?.uid);
         setSmartBookDetails(smartDetails);
         
         // Set current book based on smart logic
         if (smartDetails) {
+          console.log('Smart book details:', smartDetails);
           if (smartDetails.isCompleted && smartDetails.hasNextChapter) {
+            console.log('Smart book details2:');
             // Show next chapter if current is completed
             setCurrentBook(smartDetails.nextChapter);
           } else if (!smartDetails.isCompleted) {
+            console.log('Smart book details3:');
             // Show current chapter if not completed
             setCurrentBook(smartDetails.book);
           } else {
+            console.log('Smart book details4:');
+            // Debug: Log all chapters for this book_id with chapter_number > 1
+            if (smartDetails && smartDetails.book && smartDetails.book.book_id) {
+              (async () => {
+                const allBooks = await getAllBooks();
+                const nextChapters = allBooks.filter(b => b.book_id === smartDetails.book!.book_id);
+                console.log('All chapters for book_id', smartDetails.book!.book_id, 'with chapter_number > 1:', nextChapters);
+              })();
+            }
             // Current chapter is completed and no next chapter - don't show continue reading
             setCurrentBook(null);
           }
         } else {
+          console.log('Smart book details5:', smartDetails);
           setCurrentBook(null);
         }
       } else {
+        console.log('Smart book details6:');
         setSmartBookDetails(null);
         setCurrentBook(null);
       }
 
       // Load all completed chapters
-      const completedChapters = await getAllCompletedChapters();
+      const completedChapters = user?.uid 
+        ? await getUserCompletedChaptersWithScore(user.uid)
+        : await getAllCompletedChapters();
       console.log('=== COMPLETED CHAPTERS LOG ===');
       console.log(`Total completed chapters: ${completedChapters.length}`);
       
@@ -204,9 +413,51 @@ export default function HomeScreen() {
       console.log('=== END COMPLETED CHAPTERS LOG ===');
 
       // Load QuickReport data
-      const reportData = await getQuickReportData();
-      setQuickReportData(reportData);
-      console.log('QuickReport data loaded:', reportData);
+      const [lifetimeData, weekData, monthData] = await Promise.all([
+        getQuickReportDataByPeriod(user?.uid, 'lifetime'),
+        getQuickReportDataByPeriod(user?.uid, 'week'),
+        getQuickReportDataByPeriod(user?.uid, 'month')
+      ]);
+      
+      setQuickReportData({
+        lifetime: lifetimeData,
+        week: weekData,
+        month: monthData
+      });
+      console.log('QuickReport data loaded:', { lifetimeData, weekData, monthData });
+
+      // Load reading level
+      await loadReadingLevel();
+
+      // Load reading streak data
+      const streakDetails = await getReadingStreakDetails(user?.uid);
+      setReadingStreak(streakDetails);
+      console.log('Reading streak data loaded:', streakDetails);
+
+      // Load completed books count for free users
+      if (user?.uid && !isPremium) {
+        const chaptersCount = await getUserCompletedChaptersWithScore(user.uid);
+        setCompletedChaptersCount(chaptersCount.length);
+        console.log('Completed chapters count:', chaptersCount.length);
+        
+        // Show upgrade modal at 5 chapters remaining (5 completed)
+        if (chaptersCount.length === 5) {
+          setShowUpgradeModal5(true);
+        }
+        
+        // Show upgrade modal at 3 chapters remaining (7 completed)
+        if (chaptersCount.length === 7) {
+          setShowUpgradeModal3(true);
+        }
+        
+        // Show paywall if user has completed 10 or more chapters
+        if (chaptersCount.length >= 10) {
+          setShowChapterLimitPaywall(true);
+        }
+      }
+
+      // Count chapters per book and log the results
+      await countChaptersPerBook();
 
       setIsLoading(false);
     } catch (error) {
@@ -294,8 +545,18 @@ export default function HomeScreen() {
 
   const handleStartReading = async () => {
     try {
+      // Check chapter limit for free users
+      if (user?.uid && !isPremium && completedChaptersCount >= 10) {
+        setShowChapterLimitPaywall(true);
+        return;
+      }
+
       setIsReadingLoading(true);
-      const book = await startRandomReading();
+      
+      // Use the new function to get a random uncompleted book
+      const book = user?.uid 
+        ? await startRandomUncompletedReading(user.uid)
+        : await startRandomReading(); // Fallback for users without UID
       
       // Track reading start
       analytics.track('reading_started', {
@@ -322,8 +583,17 @@ export default function HomeScreen() {
 
   const handleContinueReading = async () => {
     try {
+      console.log('=== handleContinueReading called ===');
+      console.log('Current reading:', currentReading);
+      console.log('Smart book details:', smartBookDetails);
       if (!currentReading || !smartBookDetails) {
         setError('No active reading session found');
+        return;
+      }
+      
+      // Check chapter limit for free users
+      if (user?.uid && !isPremium && completedChaptersCount >= 10) {
+        setShowChapterLimitPaywall(true);
         return;
       }
       
@@ -332,27 +602,37 @@ export default function HomeScreen() {
       // Determine which book to continue with
       let bookToContinue: Book | null = null;
       
+      console.log(`Smart book details - isCompleted: ${smartBookDetails.isCompleted}, hasNextChapter: ${smartBookDetails.hasNextChapter}`);
+      
       if (smartBookDetails.isCompleted && smartBookDetails.hasNextChapter) {
         // Continue with next chapter
         bookToContinue = smartBookDetails.nextChapter;
+        console.log(`Continuing with next chapter: ${bookToContinue?.chapter_name} (${bookToContinue?.chapter_number})`);
         
         // Update reading progress to next chapter
         if (bookToContinue) {
+          console.log(`Updating reading progress to: book_id=${bookToContinue.book_id}, chapter_number=${bookToContinue.chapter_number}, chapter_name=${bookToContinue.chapter_name}`);
           await updateReading({
             book_id: bookToContinue.book_id,
             chapter_number: bookToContinue.chapter_number,
             chapter_name: bookToContinue.chapter_name
           });
+          // Log the updated current reading after updateReading
+          const updatedReading = await getCurrentReadingStatus();
+          console.log('Updated current reading after updateReading:', updatedReading);
         }
       } else if (!smartBookDetails.isCompleted) {
         // Continue with current chapter
         bookToContinue = smartBookDetails.book;
+        console.log(`Continuing with current chapter: ${bookToContinue?.chapter_name} (${bookToContinue?.chapter_number})`);
       }
       
       if (!bookToContinue) {
         setError('No chapter to continue with');
         return;
       }
+      
+      console.log(`Final book to continue: ${bookToContinue.chapter_name} (Chapter ${bookToContinue.chapter_number})`);
       
       // Update current book
       setCurrentBook(bookToContinue);
@@ -376,9 +656,23 @@ export default function HomeScreen() {
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
     }).format(amount);
+  };
+
+  // Get reading level description
+  const getReadingLevelDescription = (level: string) => {
+    switch (level) {
+      case 'Explorer':
+        return 'Beginner stories with simple words';
+      case 'Builder':
+        return 'Slightly more complex phrasing, idioms';
+      case 'Challenger':
+        return 'More plot, bigger words';
+      default:
+        return 'Beginner stories with simple words';
+    }
   };
 
   // Track home screen view
@@ -409,6 +703,29 @@ export default function HomeScreen() {
       // Error handling for share functionality
     }
   };
+
+  useEffect(() => {
+    const resolveContinueImage = async () => {
+      if (currentBook && currentBook.images) {
+        try {
+          const imagesData = typeof currentBook.images === 'string' ? JSON.parse(currentBook.images) : currentBook.images;
+          const firstImg = imagesData.illustrations && imagesData.illustrations[0];
+          if (firstImg) {
+            const url = `${HOST_URL}/public/learn/book/get-image?image=${firstImg}`;
+            try {
+              const res = await fetch(url, { method: 'HEAD' });
+              if (res.ok) {
+                setContinueImage(url);
+                return;
+              }
+            } catch {}
+          }
+        } catch {}
+      }
+      setContinueImage(require('@/assets/images/dimpo/reading.png'));
+    };
+    resolveContinueImage();
+  }, [currentBook]);
 
   const styles = StyleSheet.create({
     container: {
@@ -794,12 +1111,11 @@ export default function HomeScreen() {
       flexDirection: 'row',
       alignItems: 'center',
       width: '100%',
-      justifyContent: 'space-between',
+      justifyContent: 'center',
       marginBottom: 2,
     },
     jugEmoji: {
       fontSize: 36,
-      marginRight: 2,
       paddingTop: 14,
     },
     jugGridName: {
@@ -888,6 +1204,108 @@ export default function HomeScreen() {
       fontSize: 14,
       color: colors.textSecondary,
     },
+    placeholderCard: {
+      backgroundColor: colors.surface,
+      borderWidth: 2,
+      borderColor: colors.border,
+      borderStyle: 'dashed',
+    },
+    placeholderContent: {
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    placeholderEmoji: {
+      fontSize: 36,
+      marginBottom: 8,
+      color: colors.textSecondary,
+      paddingTop: 10,
+    },
+    placeholderText: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: colors.textSecondary,
+      textAlign: 'center',
+    },
+    readingLevelCard: {
+      backgroundColor: colors.surface,
+      padding: 16,
+      borderRadius: 12,
+      marginHorizontal: 20,
+      marginBottom: 20,
+      borderWidth: 1,
+      borderColor: colors.border,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.06,
+      shadowRadius: 8,
+      elevation: 2,
+    },
+    readingLevelContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    readingLevelEmoji: {
+      fontSize: 36,
+      marginRight: 12,
+      paddingTop: 18,
+    },
+    readingLevelTextContainer: {
+      flexDirection: 'column',
+    },
+    readingLevelLabel: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: colors.text,
+    },
+    readingLevelValue: {
+      fontSize: 18,
+      fontWeight: 'bold',
+      color: colors.primary,
+    },
+    readingLevelDescription: {
+      fontSize: 14,
+      color: colors.textSecondary,
+    },
+    readingStreakCard: {
+      backgroundColor: colors.surface,
+      padding: 16,
+      borderRadius: 12,
+      marginHorizontal: 20,
+      marginBottom: 20,
+      borderWidth: 1,
+      borderColor: colors.border,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.06,
+      shadowRadius: 8,
+      elevation: 2,
+    },
+    readingStreakContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    readingStreakEmoji: {
+      fontSize: 36,
+      marginRight: 12,
+      paddingTop: 18,
+    },
+    readingStreakTextContainer: {
+      flexDirection: 'column',
+    },
+    readingStreakLabel: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: colors.text,
+    },
+    readingStreakValue: {
+      fontSize: 18,
+      fontWeight: 'bold',
+      color: colors.primary,
+    },
+    readingStreakDescription: {
+      fontSize: 14,
+      color: colors.textSecondary,
+    },
   });
 
   // Show database loading if database is not initialized
@@ -921,6 +1339,72 @@ export default function HomeScreen() {
               <ThemedText style={[styles.totalBalanceAmount, { color: '#fff' }]}>{formatCurrency(statistics?.total_balance || 0)}</ThemedText>
             </LinearGradient>
 
+            {/* Reading Level Card */}
+            <View style={styles.readingLevelCard}>
+              <View style={styles.readingLevelContent}>
+                <ThemedText style={styles.readingLevelEmoji}>
+                  {currentReadingLevel === 'Explorer' ? '🧭' : 
+                   currentReadingLevel === 'Builder' ? '🧱' : '🧗‍♂️'}
+                </ThemedText>
+                <View style={styles.readingLevelTextContainer}>
+                  <ThemedText style={styles.readingLevelLabel}>Reading Level</ThemedText>
+                  <ThemedText style={styles.readingLevelValue}>{currentReadingLevel}</ThemedText>
+                  <ThemedText style={styles.readingLevelDescription}>
+                    {getReadingLevelDescription(currentReadingLevel)}
+                  </ThemedText>
+                </View>
+              </View>
+            </View>
+
+            {/* Reading Streak Card */}
+            {readingStreak && (
+              <View style={[
+                styles.readingStreakCard,
+                readingStreak.currentStreak >= 7 && { 
+                  backgroundColor: 'transparent',
+                  borderWidth: 0,
+                  shadowOpacity: 0.15,
+                  shadowRadius: 12,
+                  elevation: 4
+                }
+              ]}>
+                {readingStreak.currentStreak >= 7 ? (
+                  <LinearGradient
+                    colors={['#ff6b6b', '#ee5a24']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={[styles.readingStreakCard, { backgroundColor: 'transparent', borderWidth: 0 }]}
+                  >
+                    <View style={styles.readingStreakContent}>
+                      <ThemedText style={[styles.readingStreakEmoji, { color: '#fff' }]}>🔥</ThemedText>
+                      <View style={styles.readingStreakTextContainer}>
+                        <ThemedText style={[styles.readingStreakLabel, { color: '#fff' }]}>Reading Streak</ThemedText>
+                        <ThemedText style={[styles.readingStreakValue, { color: '#fff' }]}>{readingStreak.currentStreak} days</ThemedText>
+                        <ThemedText style={[styles.readingStreakDescription, { color: '#fff', opacity: 0.9 }]}>
+                          {`Longest: ${readingStreak.longestStreak} days • Total: ${readingStreak.totalDaysRead} days`}
+                        </ThemedText>
+                      </View>
+                    </View>
+                  </LinearGradient>
+                ) : (
+                  <View style={styles.readingStreakContent}>
+                    <ThemedText style={styles.readingStreakEmoji}>
+                      {readingStreak.currentStreak >= 3 ? '⚡' : '📚'}
+                    </ThemedText>
+                    <View style={styles.readingStreakTextContainer}>
+                      <ThemedText style={styles.readingStreakLabel}>Reading Streak</ThemedText>
+                      <ThemedText style={styles.readingStreakValue}>{readingStreak.currentStreak} days</ThemedText>
+                      <ThemedText style={styles.readingStreakDescription}>
+                        {readingStreak.currentStreak === 0 ? 'Start reading to build your streak!' :
+                         readingStreak.currentStreak === 1 ? 'Great start! Keep it up!' :
+                         `Longest: ${readingStreak.longestStreak} days • Total: ${readingStreak.totalDaysRead} days`}
+                      </ThemedText>
+                    </View>
+                  </View>
+                )}
+              </View>
+            )}
+
             {/* Empty State or Jugs List */}
             <View style={styles.jugsHeader}>
               <ThemedText style={styles.jugsTitle}>Your Savings Jars</ThemedText>
@@ -934,99 +1418,114 @@ export default function HomeScreen() {
                   }
                 }}
               >
-                <ThemedText style={styles.addJugButtonText}>＋ Add Jug</ThemedText>
+                <ThemedText style={styles.addJugButtonText}>＋ Add Jar</ThemedText>
               </Pressable>
             </View>
-            {jugs.length === 0 ? (
-              <View style={styles.emptyStateContainer}>
-                <ThemedText style={styles.emptyStateIcon}>🐷</ThemedText>
-                <ThemedText style={styles.emptyStateTitle}>No Savings Jars Yet</ThemedText>
-                <ThemedText style={styles.emptyStateText}>
-                  Create your first savings jar to start tracking your savings goals. 
-                  You can create multiple jars for different purposes like emergency fund, 
-                  vacation, or a new car.
-                </ThemedText>
-              </View>
-            ) : (
-              <View style={styles.jugsGrid}>
-                {jugs.map((jug, idx) => (
-                  <LinearGradient
-                    key={jug.id}
-                    colors={JUG_GRADIENTS[idx % JUG_GRADIENTS.length]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    style={styles.jugGridCard}
+            <View style={styles.jugsGrid}>
+              {jugs.map((jug, idx) => (
+                <LinearGradient
+                  key={jug.id}
+                  colors={JUG_GRADIENTS[idx % JUG_GRADIENTS.length]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.jugGridCard}
+                >
+                  <Pressable
+                    style={({ pressed }) => [styles.jugGridPressable, pressed && styles.jugGridPressed]}
+                    android_ripple={{ color: '#e5e7eb' }}
+                    onPress={() => router.push(`/jug-transactions?jugId=${jug.id}`)}
                   >
-                    <Pressable
-                      style={({ pressed }) => [styles.jugGridPressable, pressed && styles.jugGridPressed]}
-                      android_ripple={{ color: '#e5e7eb' }}
-                      onPress={() => router.push(`/jug-transactions?jugId=${jug.id}`)}
-                    >
-                      <View style={styles.jugGridHeader}>
-                        <ThemedText style={[styles.jugEmoji, { color: '#fff' }]}>{jug.emoji || JUG_EMOJIS[idx % JUG_EMOJIS.length]}</ThemedText>
-                      </View>
-                      <ThemedText style={[styles.jugGridName, { color: '#fff' }]}>{jug.name}</ThemedText>
-                      <ThemedText style={[styles.jugGridBalance, { color: '#fff' }]}>{formatCurrency(jug.balance)}</ThemedText>
-                    </Pressable>
-                  </LinearGradient>
-                ))}
-              </View>
-            )}
+                    <View style={styles.jugGridHeader}>
+                      <ThemedText style={[styles.jugEmoji, { color: '#fff' }]}>{jug.emoji || JUG_EMOJIS[idx % JUG_EMOJIS.length]}</ThemedText>
+                    </View>
+                    <ThemedText style={[styles.jugGridName, { color: '#fff' }]}>{jug.name}</ThemedText>
+                    <ThemedText style={[styles.jugGridBalance, { color: '#fff' }]}>{formatCurrency(jug.balance)}</ThemedText>
+                  </Pressable>
+                </LinearGradient>
+              ))}
+              
+              {/* Show placeholder when user has only 1 jug */}
+              {jugs.length === 1 && (
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.jugGridCard,
+                    styles.placeholderCard,
+                    pressed && styles.jugGridPressed
+                  ]}
+                  onPress={() => setShowAddModal(true)}
+                  android_ripple={{ color: '#e5e7eb' }}
+                >
+                  <View style={styles.placeholderContent}>
+                    <ThemedText style={styles.placeholderEmoji}>➕</ThemedText>
+                    <ThemedText style={styles.placeholderText}>Add Another Jar</ThemedText>
+                  </View>
+                </Pressable>
+              )}
+            </View>
 
             {/* Other Action Buttons */}
             <View style={styles.actionButtonsContainer}>
               {/* Continue Reading Card or Start New Book Card */}
-              {currentReading && smartBookDetails ? (
-                // Show continue reading card if there's a chapter to continue with
-                currentBook ? (
-                  <ContinueReadingCard
-                    book={{ ...currentBook, images: require('../assets/images/book/story_1_7-10_ch1_img1_1751219215.png') }}
-                    onPress={handleContinueReading}
-                    isLoading={isReadingLoading}
-                    isNextChapter={smartBookDetails.isCompleted && smartBookDetails.hasNextChapter}
-                  />
-                ) : (
-                  // Show start new book card if current chapter is completed and no next chapter
-                  <Pressable
-                    style={({ pressed }) => [
-                      styles.mainActionButton,
-                      pressed && styles.actionButtonPressed,
-                      isReadingLoading && styles.actionButtonDisabled,
-                    ]}
-                    onPress={handleStartReading}
-                    disabled={isReadingLoading}
-                    accessibilityRole="button"
-                    accessibilityLabel="Start new book"
-                  >
-                    <ThemedText style={styles.mainActionButtonText}>
-                      {isReadingLoading ? '⏳ Loading...' : '📖 Start New Book'}
-                    </ThemedText>
-                  </Pressable>
-                )
-              ) : (
-                // Show start reading card if no active reading session
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.mainActionButton,
-                    pressed && styles.actionButtonPressed,
-                    isReadingLoading && styles.actionButtonDisabled,
-                  ]}
-                  onPress={handleStartReading}
-                  disabled={isReadingLoading}
-                  accessibilityRole="button"
-                  accessibilityLabel="Start reading"
-                >
-                  <ThemedText style={styles.mainActionButtonText}>
-                    {isReadingLoading ? '⏳ Loading...' : '📖 Start Reading'}
-                  </ThemedText>
-                </Pressable>
-              )}
+              {(() => {
+
+                if (currentReading && smartBookDetails) {
+                  if (currentBook) {
+                    console.log('Branch: Continue Reading (currentBook exists)');
+                    return (
+                      <ContinueReadingCard
+                        book={{ ...currentBook, images: continueImage }}
+                        onPress={handleContinueReading}
+                        isLoading={isReadingLoading}
+                        isNextChapter={smartBookDetails.isCompleted && smartBookDetails.hasNextChapter}
+                      />
+                    );
+                  } else {
+                    console.log('Branch: Start New Book (currentBook is null, but session exists)');
+                    return (
+                      <Pressable
+                        style={({ pressed }) => [
+                          styles.mainActionButton,
+                          pressed && styles.actionButtonPressed,
+                          isReadingLoading && styles.actionButtonDisabled,
+                        ]}
+                        onPress={handleStartReading}
+                        disabled={isReadingLoading}
+                        accessibilityRole="button"
+                        accessibilityLabel="Start new book"
+                      >
+                        <ThemedText style={styles.mainActionButtonText}>
+                          {isReadingLoading ? '⏳ Loading...' : '📖 Start New Book'}
+                        </ThemedText>
+                      </Pressable>
+                    );
+                  }
+                } else {
+                  console.log('Branch: Start Reading (no session)');
+                  return (
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.mainActionButton,
+                        pressed && styles.actionButtonPressed,
+                        isReadingLoading && styles.actionButtonDisabled,
+                      ]}
+                      onPress={handleStartReading}
+                      disabled={isReadingLoading}
+                      accessibilityRole="button"
+                      accessibilityLabel="Start reading"
+                    >
+                      <ThemedText style={styles.mainActionButtonText}>
+                        {isReadingLoading ? '⏳ Loading...' : '📖 Start New Book'}
+                      </ThemedText>
+                    </Pressable>
+                  );
+                }
+              })()}
 
               {/* Report Button */}
               <QuickReport 
-                booksRead={quickReportData?.booksRead || 0} 
-                totalEarned={quickReportData?.totalEarned || 0} 
-                chaptersRead={quickReportData?.chaptersRead || 0} 
+                lifetimeData={quickReportData?.lifetime || { booksRead: 0, totalEarned: 0, chaptersRead: 0 }}
+                weekData={quickReportData?.week || { booksRead: 0, totalEarned: 0, chaptersRead: 0 }}
+                monthData={quickReportData?.month || { booksRead: 0, totalEarned: 0, chaptersRead: 0 }}
               />
             </View>
 
@@ -1072,7 +1571,7 @@ export default function HomeScreen() {
                               marginBottom: 2,
                             }}
                           >
-                            <ThemedText style={{ fontSize: 28, color: selectedEmoji === emoji ? '#fff' : colors.text }}>{emoji}</ThemedText>
+                            <ThemedText style={{ fontSize: 28, paddingTop: 8, color: selectedEmoji === emoji ? '#fff' : colors.text }}>{emoji}</ThemedText>
                           </Pressable>
                         ))}
                       </View>
@@ -1082,7 +1581,7 @@ export default function HomeScreen() {
               </View>
               <TextInput
                 style={styles.modalInput}
-                placeholder="Enter jug name..."
+                placeholder="Enter jar name..."
                 placeholderTextColor={colors.textSecondary}
                 value={newJugName}
                 onChangeText={setNewJugName}
@@ -1221,6 +1720,85 @@ export default function HomeScreen() {
             >
               <ThemedText style={{ color: '#fff', fontWeight: '700', fontSize: 16, textAlign: 'center' }}>OK</ThemedText>
             </Pressable>
+          </View>
+        </View>
+      </RNModal>
+
+      {/* Chapter Limit Paywall */}
+      {showChapterLimitPaywall && (
+        <Paywall
+          onSuccess={() => {
+            setShowChapterLimitPaywall(false);
+            // Refresh data after successful upgrade
+            loadSavingsData();
+            refreshChapterCountAndCheckPaywall();
+          }}
+          onClose={() => {
+            setShowChapterLimitPaywall(false);
+          }}
+        />
+      )}
+
+      {/* Upgrade Modal - 5 Chapters Remaining */}
+      <RNModal visible={showUpgradeModal5} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <ThemedText style={styles.modalTitle}>🚀 Upgrade to Premium</ThemedText>
+            <ThemedText style={{ textAlign: 'center', fontSize: 16, marginBottom: 20, color: colors.textSecondary }}>
+              You've completed 5 chapters! Only 5 more free chapters remaining.
+            </ThemedText>
+            <ThemedText style={{ textAlign: 'center', fontSize: 14, marginBottom: 20, color: colors.textSecondary }}>
+              Upgrade to Premium for unlimited access to all chapters and features!
+            </ThemedText>
+            <View style={styles.modalButtons}>
+              <Pressable 
+                style={[styles.modalButton, styles.modalButtonSecondary]}
+                onPress={() => setShowUpgradeModal5(false)}
+              >
+                <ThemedText style={[styles.modalButtonText, styles.modalButtonTextSecondary]}>Continue Free</ThemedText>
+              </Pressable>
+              <Pressable 
+                style={[styles.modalButton, styles.modalButtonPrimary]}
+                onPress={() => {
+                  setShowUpgradeModal5(false);
+                  showPaywall();
+                }}
+              >
+                <ThemedText style={[styles.modalButtonText, styles.modalButtonTextPrimary]}>Upgrade Now</ThemedText>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </RNModal>
+
+      {/* Upgrade Modal - 3 Chapters Remaining */}
+      <RNModal visible={showUpgradeModal3} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <ThemedText style={styles.modalTitle}>⚠️ Almost at the Limit</ThemedText>
+            <ThemedText style={{ textAlign: 'center', fontSize: 16, marginBottom: 20, color: colors.textSecondary }}>
+              You've completed 7 chapters! Only 3 more free chapters remaining.
+            </ThemedText>
+            <ThemedText style={{ textAlign: 'center', fontSize: 14, marginBottom: 20, color: colors.textSecondary }}>
+              Don't let your reading journey stop here! Upgrade to Premium for unlimited access.
+            </ThemedText>
+            <View style={styles.modalButtons}>
+              <Pressable 
+                style={[styles.modalButton, styles.modalButtonSecondary]}
+                onPress={() => setShowUpgradeModal3(false)}
+              >
+                <ThemedText style={[styles.modalButtonText, styles.modalButtonTextSecondary]}>Continue Free</ThemedText>
+              </Pressable>
+              <Pressable 
+                style={[styles.modalButton, styles.modalButtonPrimary]}
+                onPress={() => {
+                  setShowUpgradeModal3(false);
+                  showPaywall();
+                }}
+              >
+                <ThemedText style={[styles.modalButtonText, styles.modalButtonTextPrimary]}>Upgrade Now</ThemedText>
+              </Pressable>
+            </View>
           </View>
         </View>
       </RNModal>

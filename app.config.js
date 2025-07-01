@@ -4,7 +4,7 @@ export default {
   version: '1',
   orientation: 'portrait',
   icon: './assets/images/icon.png',
-  scheme: 'dimpoaccounting',
+  scheme: 'dimporeads',
   userInterfaceStyle: 'automatic',
   newArchEnabled: false,
   ios: {
@@ -17,7 +17,7 @@ export default {
       "UIBackgroundModes": ["remote-notification"]
     },
     "associatedDomains": ["applinks:examquiz.co.za"],
-    "storeKitConfiguration": "./ios/DimpoAccounting/Configuration.storekit"
+    "storeKitConfiguration": "./ios/DimpoReads/Configuration.storekit"
   },
   android: {
     package: 'com.dimporeads',

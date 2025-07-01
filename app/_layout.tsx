@@ -101,8 +101,6 @@ function RootLayoutNav() {
               <Stack.Screen name="index" />
               <Stack.Screen name="report" />
               <Stack.Screen name="profile" />
-              <Stack.Screen name="accounting-lesson" />
-              <Stack.Screen name="subtopics" />
               <Stack.Screen name="(auth)" />
               <Stack.Screen name="login" />
               <Stack.Screen name="register" />

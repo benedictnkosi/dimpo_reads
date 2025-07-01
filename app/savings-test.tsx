@@ -411,7 +411,7 @@ export default function SavingsTestScreen() {
             <View style={styles.formSection}>
               <TextInput
                 style={styles.input}
-                placeholder="Select jug (enter jug ID)..."
+                placeholder="Select jug (enter jar ID)..."
                 placeholderTextColor={colors.textSecondary}
                 value={selectedJugId?.toString() || ''}
                 onChangeText={(text) => setSelectedJugId(parseInt(text) || null)}

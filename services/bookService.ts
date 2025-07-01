@@ -1,4 +1,4 @@
-import { insertBook, getAllBooks, getBookStatistics } from './database';
+import { insertBook, getAllBooks, getBookStatistics, clearAllBooks } from './database';
 
 // Import the books data
 import booksData from '@/assets/books.json';
@@ -6,6 +6,7 @@ import booksData from '@/assets/books.json';
 // Interface for book data from JSON
 interface BookData {
   book_id: string;
+  title: string;
   genre: string;
   sub_genre: string;
   chapter_number: number;
@@ -41,6 +42,7 @@ export const loadBooksFromJSON = async (): Promise<void> => {
       try {
         await insertBook({
           book_id: book.book_id,
+          title: book.title,
           genre: book.genre,
           sub_genre: book.sub_genre,
           chapter_number: book.chapter_number,
@@ -66,6 +68,26 @@ export const loadBooksFromJSON = async (): Promise<void> => {
     
   } catch (error) {
     console.error('[BookService] Error loading books from JSON:', error);
+    throw error;
+  }
+};
+
+// Reload books from JSON (clear existing and reload)
+export const reloadBooksFromJSON = async (): Promise<void> => {
+  try {
+    console.log('[BookService] Starting to reload books from JSON...');
+    
+    // Clear existing books first
+    await clearAllBooks();
+    console.log('[BookService] Cleared existing books from database');
+    
+    // Load books from JSON
+    await loadBooksFromJSON();
+    
+    console.log('[BookService] Successfully reloaded books from JSON');
+    
+  } catch (error) {
+    console.error('[BookService] Error reloading books from JSON:', error);
     throw error;
   }
 };
@@ -150,6 +172,7 @@ export const searchBooks = async (searchTerm: string) => {
     const searchLower = searchTerm.toLowerCase();
     
     return books.filter(book => 
+      (book.title && book.title.toLowerCase().includes(searchLower)) ||
       book.chapter_name.toLowerCase().includes(searchLower) ||
       book.content.toLowerCase().includes(searchLower) ||
       book.genre.toLowerCase().includes(searchLower) ||

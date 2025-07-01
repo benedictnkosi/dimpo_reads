@@ -1,5 +1,5 @@
 {
-  "name": "dimpo_accounting_app",
+  "name": "dimpo_reads",
   "main": "expo-router/entry",
   "version": "1.0.0",
   "type": "module",

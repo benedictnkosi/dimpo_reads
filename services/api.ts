@@ -385,11 +385,11 @@ export async function getMessages(): Promise<MessagesResponse> {
 
 export async function updateVersion(uid: string, version: string, os: string): Promise<{ success: boolean; message: string }> {
   const response = await fetch(
-    `${API_BASE_URL}/learner/update-version`,
+    ensureHttps(`${API_BASE_URL}/learner/update-version`),
     {
-      method: 'PUT',
+      method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({
         uid,
@@ -404,4 +404,60 @@ export async function updateVersion(uid: string, version: string, os: string): P
   }
 
   return response.json();
+}
+
+// Interface for completed chapter from API
+export interface ApiCompletedChapter {
+  id: number;
+  learnerUid: string;
+  chapterNumber: number;
+  bookTitle: string;
+  completedAt: string;
+}
+
+// Interface for completed chapters API response
+export interface CompletedChaptersResponse {
+  learnerUid: string;
+  completedChapters: ApiCompletedChapter[];
+  totalCount: number;
+}
+
+// Function to fetch completed chapters from API
+export async function fetchCompletedChapters(learnerUid: string): Promise<CompletedChaptersResponse> {
+  const response = await fetch(
+    `${HOST_URL}/api/learner-completed-chapters/learner/${learnerUid}`
+  );
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch completed chapters');
+  }
+
+  return response.json();
+}
+
+// Interface for completed chapter submission
+export interface CompletedChapterSubmission {
+  learnerUid: string;
+  chapterName: string;
+  bookTitle: string;
+  readingSpeed: number;
+  score: number;
+}
+
+// Function to submit completed chapter to API
+export async function submitCompletedChapter(data: CompletedChapterSubmission): Promise<void> {
+  const response = await fetch(
+    `${HOST_URL}/api/learner-completed-chapters`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(data)
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error('Failed to submit completed chapter');
+  }
 } 

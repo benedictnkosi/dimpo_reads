@@ -11,6 +11,7 @@ import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleShe
 import Toast from 'react-native-toast-message';
 import { OnboardingData } from '../onboarding';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { initializeReadingLevel } from '@/services/database';
 
 interface RegisterFormProps {
     onboardingData: OnboardingData;
@@ -246,6 +247,9 @@ export default function RegisterForm({ onboardingData, defaultMethod = 'email' }
             // After successful registration, save age and agreedAmount to AsyncStorage
             if (data.age) await AsyncStorage.setItem('learnerAge', data.age);
             if (data.agreedAmount) await AsyncStorage.setItem('learnerAgreedAmount', data.agreedAmount);
+            
+            // Initialize reading level to Explorer for new users
+            await initializeReadingLevel();
         } catch (error) {
             console.error('Registration error:', error);
             

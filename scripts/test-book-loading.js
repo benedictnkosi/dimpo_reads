@@ -29,35 +29,57 @@ async function testBookLoading() {
     // Verify books were loaded
     console.log('5. Verifying books were loaded...');
     const allBooks = await getAllBooks();
-    console.log(`📚 Total books loaded: ${allBooks.length}\n`);
+    console.log(`📚 Total chapters loaded: ${allBooks.length}\n`);
 
     // Get statistics
     console.log('6. Getting book statistics...');
     const stats = await getBookStatistics();
     console.log('📊 Book Statistics:');
-    console.log(`   Total books: ${stats.total_books}`);
-    console.log(`   Total genres: ${stats.total_genres}`);
-    console.log(`   Total reading levels: ${stats.total_reading_levels}`);
+    console.log(`   Total unique books: ${stats.total_books}`);
+    console.log(`   Total chapters: ${stats.total_chapters}`);
+    console.log(`   Total genres: ${stats.genres_count}`);
+    console.log(`   Total reading levels: ${stats.reading_levels_count}`);
     console.log(`   Average word count: ${stats.average_word_count}`);
     console.log(`   Total word count: ${stats.total_word_count}\n`);
 
-    // Display sample books
-    console.log('7. Sample books loaded:');
-    allBooks.slice(0, 3).forEach((book, index) => {
-      console.log(`   ${index + 1}. ${book.chapter_name}`);
-      console.log(`      Genre: ${book.genre} → ${book.sub_genre}`);
-      console.log(`      Reading Level: ${book.reading_level}`);
-      console.log(`      Word Count: ${book.word_count}`);
-      console.log(`      Has Quiz: ${book.quiz ? 'Yes' : 'No'}`);
-      console.log(`      Has Images: ${book.images ? 'Yes' : 'No'}\n`);
+    // Display sample books grouped by book_id
+    console.log('7. Sample books grouped by book_id:');
+    const booksByBookId = {};
+    allBooks.forEach(book => {
+      if (!booksByBookId[book.book_id]) {
+        booksByBookId[book.book_id] = [];
+      }
+      booksByBookId[book.book_id].push(book);
     });
 
-    console.log('🎉 Book loading test completed successfully!');
+    Object.keys(booksByBookId).slice(0, 5).forEach(bookId => {
+      const chapters = booksByBookId[bookId];
+      console.log(`\n📖 Book ID: ${bookId}`);
+      console.log(`   Genre: ${chapters[0].genre}/${chapters[0].sub_genre}`);
+      console.log(`   Reading Level: ${chapters[0].reading_level}`);
+      console.log(`   Chapters: ${chapters.length}`);
+      chapters.forEach(chapter => {
+        console.log(`     Chapter ${chapter.chapter_number}: ${chapter.chapter_name}`);
+      });
+    });
+
+    // Check for books with multiple chapters
+    const booksWithMultipleChapters = Object.keys(booksByBookId).filter(bookId => 
+      booksByBookId[bookId].length > 1
+    );
+    
+    console.log(`\n🎯 Books with multiple chapters: ${booksWithMultipleChapters.length}`);
+    if (booksWithMultipleChapters.length > 0) {
+      console.log('✅ SUCCESS: Multiple chapters per book are now working!');
+    } else {
+      console.log('❌ ISSUE: No books with multiple chapters found');
+    }
+
+    console.log('\n✅ Test completed successfully!');
 
   } catch (error) {
-    console.error('❌ Error during book loading test:', error);
+    console.error('❌ Test failed:', error);
   }
 }
 
-// Run the test
 testBookLoading(); 

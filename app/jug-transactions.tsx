@@ -21,11 +21,13 @@ import { DatabaseLoading } from '@/components/DatabaseLoading';
 import { 
   getSavingsJugById,
   getSavingsTransactionsByJugId,
-  deleteSavingsJug
+  deleteSavingsJug,
+  getAllSavingsJugs
 } from '@/services/database';
 import { 
   addMoneyToJug,
-  removeMoneyFromJug
+  removeMoneyFromJug,
+  transferBetweenJugs
 } from '@/services/savingsService';
 
 interface SavingsJug {
@@ -53,6 +55,7 @@ export default function JugTransactionsScreen() {
 
   const [jug, setJug] = useState<SavingsJug | null>(null);
   const [transactions, setTransactions] = useState<SavingsTransaction[]>([]);
+  const [allJugs, setAllJugs] = useState<SavingsJug[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
@@ -60,10 +63,13 @@ export default function JugTransactionsScreen() {
   const [showAddMoneyModal, setShowAddMoneyModal] = useState(false);
   const [showRemoveMoneyModal, setShowRemoveMoneyModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [showDepositModal, setShowDepositModal] = useState(false);
   
   // Form states
   const [transactionAmount, setTransactionAmount] = useState('');
   const [transactionName, setTransactionName] = useState('');
+  const [selectedDestinationJugId, setSelectedDestinationJugId] = useState<number | null>(null);
 
   useEffect(() => {
     if (isInitialized && !isDatabaseLoading && jugId) {
@@ -88,6 +94,10 @@ export default function JugTransactionsScreen() {
 
       const transactionsData = await getSavingsTransactionsByJugId(jugIdNum);
       setTransactions(transactionsData);
+
+      // Load all jugs for transfer selection
+      const allJugsData = await getAllSavingsJugs();
+      setAllJugs(allJugsData);
 
       setIsLoading(false);
     } catch (error) {
@@ -150,6 +160,64 @@ export default function JugTransactionsScreen() {
     }
   };
 
+  const handleTransferMoney = async () => {
+    if (!jug || !selectedDestinationJugId || !transactionAmount) {
+      Alert.alert('Error', 'Please fill in all fields');
+      return;
+    }
+
+    const amount = parseFloat(transactionAmount);
+    if (isNaN(amount) || amount <= 0) {
+      Alert.alert('Error', 'Please enter a valid positive amount');
+      return;
+    }
+
+    if (jug.balance < amount) {
+      Alert.alert('Error', 'Insufficient funds in this savings jar');
+      return;
+    }
+
+    if (jug.id === selectedDestinationJugId) {
+      Alert.alert('Error', 'Cannot transfer to the same savings jar');
+      return;
+    }
+
+    try {
+      await transferBetweenJugs(jug.id, selectedDestinationJugId, amount, 'Transfer');
+      setTransactionAmount('');
+      setSelectedDestinationJugId(null);
+      setShowTransferModal(false);
+      await loadJugData();
+    } catch (error) {
+      setError('Failed to transfer money');
+      console.error('Error transferring money:', error);
+    }
+  };
+
+  const handleDepositMoney = async () => {
+    if (!jug || !transactionAmount || !transactionName.trim()) {
+      Alert.alert('Error', 'Please fill in all fields');
+      return;
+    }
+
+    const amount = parseFloat(transactionAmount);
+    if (isNaN(amount) || amount <= 0) {
+      Alert.alert('Error', 'Please enter a valid positive amount');
+      return;
+    }
+
+    try {
+      await addMoneyToJug(jug.id, amount, transactionName.trim());
+      setTransactionAmount('');
+      setTransactionName('');
+      setShowDepositModal(false);
+      await loadJugData();
+    } catch (error) {
+      setError('Failed to deposit money');
+      console.error('Error depositing money:', error);
+    }
+  };
+
   const handleDeleteJug = async () => {
     if (!jug) return;
 
@@ -165,8 +233,8 @@ export default function JugTransactionsScreen() {
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
     }).format(amount);
   };
 
@@ -236,13 +304,53 @@ export default function JugTransactionsScreen() {
               <ThemedText style={styles.jugBalance}>{formatCurrency(jug.balance)}</ThemedText>
             </LinearGradient>
 
-            {/* Action Button */}
-            <View style={styles.actionButtonsSingle}>
+            {/* Action Buttons */}
+            <View style={styles.actionButtonsContainer}>
               <Pressable
-                style={({ pressed }) => [styles.withdrawButton, pressed && styles.withdrawButtonPressed]}
-                onPress={() => setShowRemoveMoneyModal(true)}
+                style={({ pressed }) => [
+                  styles.depositButton, 
+                  pressed && styles.depositButtonPressed
+                ]}
+                onPress={() => setShowDepositModal(true)}
               >
-                <ThemedText style={styles.withdrawButtonText}>Withdraw Savings</ThemedText>
+                <ThemedText style={styles.depositButtonEmoji}>💰</ThemedText>
+                <ThemedText style={styles.depositButtonText}>Deposit</ThemedText>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.transferButton, 
+                  pressed && styles.transferButtonPressed,
+                  (allJugs.length <= 1 || jug.balance <= 0) && styles.transferButtonDisabled
+                ]}
+                onPress={() => setShowTransferModal(true)}
+                disabled={allJugs.length <= 1 || jug.balance <= 0}
+              >
+                <ThemedText style={[
+                  styles.transferButtonEmoji,
+                  (allJugs.length <= 1 || jug.balance <= 0) && styles.transferButtonTextDisabled
+                ]}>🔄</ThemedText>
+                <ThemedText style={[
+                  styles.transferButtonText,
+                  (allJugs.length <= 1 || jug.balance <= 0) && styles.transferButtonTextDisabled
+                ]}>Transfer</ThemedText>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.withdrawButton, 
+                  pressed && styles.withdrawButtonPressed,
+                  jug.balance <= 0 && styles.withdrawButtonDisabled
+                ]}
+                onPress={() => setShowRemoveMoneyModal(true)}
+                disabled={jug.balance <= 0}
+              >
+                <ThemedText style={[
+                  styles.withdrawButtonEmoji,
+                  jug.balance <= 0 && styles.withdrawButtonTextDisabled
+                ]}>💸</ThemedText>
+                <ThemedText style={[
+                  styles.withdrawButtonText,
+                  jug.balance <= 0 && styles.withdrawButtonTextDisabled
+                ]}>Withdraw</ThemedText>
               </Pressable>
             </View>
 
@@ -371,6 +479,118 @@ export default function JugTransactionsScreen() {
         </View>
       </RNModal>
 
+      {/* Transfer Money Modal */}
+      <RNModal visible={showTransferModal} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <ThemedText style={styles.modalTitle}>
+              Transfer from {jug?.name}
+            </ThemedText>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Amount..."
+              placeholderTextColor={colors.textSecondary}
+              value={transactionAmount}
+              onChangeText={setTransactionAmount}
+              keyboardType="numeric"
+            />
+            
+            {/* Destination Jug Selection */}
+            <View style={styles.jugSelectionContainer}>
+              <ThemedText style={styles.jugSelectionLabel}>Transfer to:</ThemedText>
+              <ScrollView style={styles.jugSelectionScroll} showsVerticalScrollIndicator={false}>
+                {allJugs
+                  .filter(otherJug => otherJug.id !== jug?.id)
+                  .map((otherJug) => (
+                    <Pressable
+                      key={otherJug.id}
+                      style={[
+                        styles.jugSelectionItem,
+                        selectedDestinationJugId === otherJug.id && styles.jugSelectionItemSelected
+                      ]}
+                      onPress={() => setSelectedDestinationJugId(otherJug.id)}
+                    >
+                      <ThemedText style={styles.jugSelectionEmoji}>🐷</ThemedText>
+                      <View style={styles.jugSelectionInfo}>
+                        <ThemedText style={styles.jugSelectionName}>{otherJug.name}</ThemedText>
+                        <ThemedText style={styles.jugSelectionBalance}>
+                          {formatCurrency(otherJug.balance)}
+                        </ThemedText>
+                      </View>
+                      {selectedDestinationJugId === otherJug.id && (
+                        <Ionicons name="checkmark-circle" size={24} color="#3b82f6" />
+                      )}
+                    </Pressable>
+                  ))}
+              </ScrollView>
+            </View>
+
+            <View style={styles.modalButtons}>
+              <Pressable 
+                style={[styles.modalButton, styles.modalButtonSecondary]}
+                onPress={() => {
+                  setShowTransferModal(false);
+                  setTransactionAmount('');
+                  setSelectedDestinationJugId(null);
+                }}
+              >
+                <ThemedText style={[styles.modalButtonText, styles.modalButtonTextSecondary]}>Cancel</ThemedText>
+              </Pressable>
+              <Pressable 
+                style={[styles.modalButton, styles.modalButtonPrimary]}
+                onPress={handleTransferMoney}
+              >
+                <ThemedText style={[styles.modalButtonText, styles.modalButtonTextPrimary]}>Transfer</ThemedText>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </RNModal>
+
+      {/* Deposit Money Modal */}
+      <RNModal visible={showDepositModal} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <ThemedText style={styles.modalTitle}>
+              Deposit to {jug?.name}
+            </ThemedText>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Amount..."
+              placeholderTextColor={colors.textSecondary}
+              value={transactionAmount}
+              onChangeText={setTransactionAmount}
+              keyboardType="numeric"
+            />
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Transaction name (e.g., Chores completed, Birthday money)"
+              placeholderTextColor={colors.textSecondary}
+              value={transactionName}
+              onChangeText={setTransactionName}
+            />
+            <View style={styles.modalButtons}>
+              <Pressable 
+                style={[styles.modalButton, styles.modalButtonSecondary]}
+                onPress={() => {
+                  setShowDepositModal(false);
+                  setTransactionAmount('');
+                  setTransactionName('');
+                }}
+              >
+                <ThemedText style={[styles.modalButtonText, styles.modalButtonTextSecondary]}>Cancel</ThemedText>
+              </Pressable>
+              <Pressable 
+                style={[styles.modalButton, styles.modalButtonPrimary]}
+                onPress={handleDepositMoney}
+              >
+                <ThemedText style={[styles.modalButtonText, styles.modalButtonTextPrimary]}>Deposit</ThemedText>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </RNModal>
+
       {/* Delete Jug Modal */}
       <RNModal visible={showDeleteModal} transparent animationType="fade">
         <View style={styles.modalOverlay}>
@@ -484,16 +704,76 @@ const styles = StyleSheet.create({
     color: '#fff',
     paddingTop: 12,
   },
-  actionButtonsSingle: {
+  actionButtonsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 32,
     paddingHorizontal: 20,
+    gap: 8,
+  },
+  depositButton: {
+    backgroundColor: '#059669',
+    flex: 1,
+    paddingVertical: 20,
+    borderRadius: 14,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  depositButtonPressed: {
+    opacity: 0.8,
+    transform: [{ scale: 0.98 }],
+  },
+  depositButtonEmoji: {
+    fontSize: 24,
+    marginBottom: 8,
+  },
+  depositButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  transferButton: {
+    backgroundColor: '#3b82f6',
+    flex: 1,
+    paddingVertical: 20,
+    borderRadius: 14,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  transferButtonPressed: {
+    opacity: 0.8,
+    transform: [{ scale: 0.98 }],
+  },
+  transferButtonDisabled: {
+    backgroundColor: '#e5e7eb',
+  },
+  transferButtonEmoji: {
+    fontSize: 24,
+    marginBottom: 8,
+  },
+  transferButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  transferButtonTextDisabled: {
+    color: '#9ca3af',
   },
   withdrawButton: {
     backgroundColor: '#dc2626',
-    width: '100%',
-    maxWidth: 400,
-    paddingVertical: 18,
+    flex: 1,
+    paddingVertical: 20,
     borderRadius: 14,
     alignItems: 'center',
     shadowColor: '#000',
@@ -506,11 +786,21 @@ const styles = StyleSheet.create({
     opacity: 0.8,
     transform: [{ scale: 0.98 }],
   },
+  withdrawButtonDisabled: {
+    backgroundColor: '#e5e7eb',
+  },
+  withdrawButtonEmoji: {
+    fontSize: 24,
+    marginBottom: 8,
+  },
   withdrawButtonText: {
     color: '#fff',
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
     letterSpacing: 0.5,
+  },
+  withdrawButtonTextDisabled: {
+    color: '#9ca3af',
   },
   transactionsContainer: {
     paddingHorizontal: 20,
@@ -615,5 +905,42 @@ const styles = StyleSheet.create({
   },
   modalButtonTextSecondary: {
     color: '#374151',
+  },
+  jugSelectionContainer: {
+    marginBottom: 20,
+  },
+  jugSelectionLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  jugSelectionScroll: {
+    maxHeight: 200,
+  },
+  jugSelectionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 8,
+  },
+  jugSelectionItemSelected: {
+    backgroundColor: '#f3f4f6',
+  },
+  jugSelectionEmoji: {
+    fontSize: 24,
+    marginRight: 12,
+  },
+  jugSelectionInfo: {
+    flex: 1,
+  },
+  jugSelectionName: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  jugSelectionBalance: {
+    fontSize: 14,
+    color: '#6b7280',
   },
 }); 

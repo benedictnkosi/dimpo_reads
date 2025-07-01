@@ -284,7 +284,6 @@ export default function OnboardingScreen() {
 
   const [age, setAge] = useState('');
   const [agreedAmount, setAgreedAmount] = useState('');
-  const [readingLevel, setReadingLevel] = useState('');
 
   useEffect(() => {
     async function checkAuthAndOnboarding() {
@@ -335,7 +334,7 @@ export default function OnboardingScreen() {
   const handleNextStep = () => {
     setErrors({ curriculum: '' });
 
-    if (step === 4) { // Now registration step is at 4
+    if (step === 3) { // Now registration step is at 3
       handleComplete();
     } else {
       setStep(step + 1);
@@ -351,10 +350,8 @@ export default function OnboardingScreen() {
       case 2:
         return 'quiz';
       case 3:
-        return 'level';
-      case 4:
         return 'deal';
-      case 5:
+      case 4:
         return 'avatar';
       default:
         return 'unknown';
@@ -367,7 +364,7 @@ export default function OnboardingScreen() {
       analytics.track('reading_onboarding_completed', {
         method: 'registration',
         avatar_id: selectedAvatar,
-        total_steps: 5
+        total_steps: 4
       });
 
       // Store onboarding data
@@ -376,8 +373,7 @@ export default function OnboardingScreen() {
         avatar: selectedAvatar,
         onboardingCompleted: true,
         age: age,
-        agreedAmount: agreedAmount,
-        readingLevel: readingLevel
+        agreedAmount: agreedAmount
       }));
 
       // Navigate to registration screen
@@ -387,8 +383,7 @@ export default function OnboardingScreen() {
           curriculum: 'CAPS',
           avatar: selectedAvatar,
           age: age,
-          agreedAmount: agreedAmount,
-          readingLevel: readingLevel
+          agreedAmount: agreedAmount
         }
       });
 
@@ -512,48 +507,10 @@ export default function OnboardingScreen() {
           </View>
         );
       case 3:
-        const readingLevels = [
-          { key: 'explorer', emoji: '🧭', label: 'Explorer Stories', desc: 'More Pictures, Shorter Words' },
-          { key: 'builder', emoji: '🧱', label: 'Builder Stories', desc: 'Everyday Drama, School Life' },
-          { key: 'challenger', emoji: '🧗‍♂️', label: 'Challenger Stories', desc: 'More Plot, Bigger Words' },
-        ];
-        return (
-          <View style={[styles.step, { justifyContent: 'flex-start', paddingTop: 40 }]} testID="level-step">
-            <View style={[styles.textContainer, { paddingHorizontal: 20 }]} testID="level-text-container">
-              <ThemedText style={[styles.welcomeTitle, { fontSize: 26, marginBottom: 20 }]}>Choose Your Reading Level</ThemedText>
-              {readingLevels.map(level => (
-                <TouchableOpacity
-                  key={level.key}
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    backgroundColor: readingLevel === level.key ? '#4F46E5' : 'rgba(255,255,255,0.15)',
-                    borderRadius: 16,
-                    padding: 18,
-                    marginBottom: 16,
-                    borderWidth: readingLevel === level.key ? 2 : 1,
-                    borderColor: readingLevel === level.key ? '#fff' : 'rgba(255,255,255,0.2)',
-                    width: '90%',
-                    alignSelf: 'center'
-                  }}
-                  onPress={() => setReadingLevel(level.key)}
-                  testID={`level-btn-${level.key}`}
-                >
-                  <ThemedText style={{ fontSize: 32, marginRight: 16, paddingTop: 10 }}>{level.emoji}</ThemedText>
-                  <View>
-                    <ThemedText style={{ color: '#fff', fontSize: 18, fontWeight: '700' }}>{level.label}</ThemedText>
-                    <ThemedText style={{ color: '#fff', fontSize: 14 }}>{level.desc}</ThemedText>
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-        );
-      case 4:
         // Contract/Deal screen
         const amountOptions = ['0.5','1','2','3','4','5','10','20','50','100','200','500'];
         // Helper to chunk array into rows of 4
-        const chunkArray = (arr, size) => arr.reduce((acc, _, i) => (i % size ? acc : [...acc, arr.slice(i, i + size)]), []);
+        const chunkArray = (arr: any[], size: number) => arr.reduce((acc: any[], _, i: number) => (i % size ? acc : [...acc, arr.slice(i, i + size)]), []);
         const amountRows = chunkArray(amountOptions, 4);
         return (
           <View style={[styles.step, { justifyContent: 'flex-start', paddingTop: 40 }]} testID="deal-step">
@@ -567,9 +524,9 @@ export default function OnboardingScreen() {
               </ThemedText>
               <ThemedText style={[styles.welcomeText, { fontSize: 16, marginBottom: 12, color: '#FBBF24' }]}>Select your amount per chapter:</ThemedText>
               <View style={{ gap: 12, marginTop: 8 }}>
-                {amountRows.map((row, rowIdx) => (
+                {amountRows.map((row: any[], rowIdx: number) => (
                   <View key={rowIdx} style={{ flexDirection: 'row', justifyContent: 'center', marginBottom: 8 }}>
-                    {row.map(option => (
+                    {row.map((option: string) => (
                       <TouchableOpacity
                         key={option}
                         style={{
@@ -595,7 +552,7 @@ export default function OnboardingScreen() {
             </View>
           </View>
         );
-      case 5:
+      case 4:
         // Avatar selection step, now leads directly to registration
         return (
           <View style={styles.step} testID="avatar-step">
@@ -648,8 +605,7 @@ export default function OnboardingScreen() {
                       curriculum: 'CAPS',
                       avatar: selectedAvatar,
                       age: age,
-                      agreedAmount: agreedAmount,
-                      readingLevel: readingLevel
+                      agreedAmount: agreedAmount
                     }
                   });
                 }}
@@ -676,10 +632,9 @@ export default function OnboardingScreen() {
       case 0:
       case 1:
       case 2:
-      case 3:
         return true;
-      case 4:
-        return !!selectedAvatar && !!age && !!agreedAmount && !!readingLevel;
+      case 3:
+        return !!agreedAmount;
       default:
         return false;
     }
@@ -719,7 +674,7 @@ export default function OnboardingScreen() {
           {renderStep()}
         </View>
 
-        {(step < 5) && !deviceInfo && (
+        {(step < 4) && !deviceInfo && (
           <View style={styles.buttonContainer} testID="navigation-buttons">
             {step === 0 ? (
               <>

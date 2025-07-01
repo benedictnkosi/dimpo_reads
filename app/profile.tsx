@@ -15,7 +15,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
 import { Paywall } from './components/Paywall';
 import { useSound } from './contexts/SoundContext';
-import { clearAllCompletedChapters } from '@/services/database';
+import { clearAllCompletedChapters, getCurrentReadingLevel } from '@/services/database';
+import { reloadBooksFromJSON } from '@/services/bookService';
+import { ContractAmountSelector } from './components/ContractAmountSelector';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { clearLearnerReadingTable } from '@/services/database';
 
 interface ProfileInfo {
   name: string;
@@ -29,8 +33,6 @@ export default function ProfileScreen() {
   const { colors, isDark } = useTheme();
   const { soundEnabled, toggleSound } = useSound();
   const [profileInfo, setProfileInfo] = useState<ProfileInfo | null>(null);
-  const [editName, setEditName] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const insets = useSafeAreaInsets();
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -39,6 +41,121 @@ export default function ProfileScreen() {
   const [showPaywall, setShowPaywall] = useState(false);
   const [isUpgradeLoading, setIsUpgradeLoading] = useState(false);
   const [isClearingChapters, setIsClearingChapters] = useState(false);
+  const [isReloadingBooks, setIsReloadingBooks] = useState(false);
+  const [showContractSelector, setShowContractSelector] = useState(false);
+  const [agreedAmount, setAgreedAmount] = useState('5');
+  const [currentReadingLevel, setCurrentReadingLevel] = useState<string>('');
+  const [isClearingLearnerReading, setIsClearingLearnerReading] = useState(false);
+
+  // Reading level constants
+  const READING_LEVELS = {
+    EXPLORER: 'Explorer',
+    BUILDER: 'Builder', 
+    CHALLENGER: 'Challenger'
+  };
+
+  // Helper functions to convert between numeric and text levels
+  const getNumericLevel = (textLevel: string): number => {
+    switch (textLevel) {
+      case READING_LEVELS.EXPLORER: return 1;
+      case READING_LEVELS.BUILDER: return 2;
+      case READING_LEVELS.CHALLENGER: return 3;
+      default: return 1;
+    }
+  };
+
+  const getTextLevel = (numericLevel: number): string => {
+    switch (numericLevel) {
+      case 1: return READING_LEVELS.EXPLORER;
+      case 2: return READING_LEVELS.BUILDER;
+      case 3: return READING_LEVELS.CHALLENGER;
+      default: return READING_LEVELS.EXPLORER;
+    }
+  };
+
+  const handleIncrementReadingLevel = async () => {
+    try {
+      const currentLevelNum = getNumericLevel(currentReadingLevel);
+      if (currentLevelNum < 3) {
+        const newLevelNum = currentLevelNum + 1;
+        const newLevelText = getTextLevel(newLevelNum);
+        await AsyncStorage.setItem('readingLevel', newLevelText);
+        setCurrentReadingLevel(newLevelText);
+        Toast.show({
+          type: 'success',
+          text1: 'Reading Level Increased',
+          text2: `Promoted to ${newLevelText} level`,
+          position: 'top',
+          topOffset: 60,
+          visibilityTime: 3000,
+          autoHide: true
+        });
+      } else {
+        Toast.show({
+          type: 'info',
+          text1: 'Already at Max Level',
+          text2: 'You are already at the highest reading level (Challenger)',
+          position: 'top',
+          topOffset: 60,
+          visibilityTime: 3000,
+          autoHide: true
+        });
+      }
+    } catch (error) {
+      console.error('Error incrementing reading level:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to increment reading level',
+        position: 'top',
+        topOffset: 60,
+        visibilityTime: 3000,
+        autoHide: true
+      });
+    }
+  };
+
+  const handleDecrementReadingLevel = async () => {
+    try {
+      const currentLevelNum = getNumericLevel(currentReadingLevel);
+      if (currentLevelNum > 1) {
+        const newLevelNum = currentLevelNum - 1;
+        const newLevelText = getTextLevel(newLevelNum);
+        await AsyncStorage.setItem('readingLevel', newLevelText);
+        setCurrentReadingLevel(newLevelText);
+        Toast.show({
+          type: 'success',
+          text1: 'Reading Level Decreased',
+          text2: `Demoted to ${newLevelText} level`,
+          position: 'top',
+          topOffset: 60,
+          visibilityTime: 3000,
+          autoHide: true
+        });
+      } else {
+        Toast.show({
+          type: 'info',
+          text1: 'Already at Min Level',
+          text2: 'You are already at the lowest reading level (Explorer)',
+          position: 'top',
+          topOffset: 60,
+          visibilityTime: 3000,
+          autoHide: true
+        });
+      }
+    } catch (error) {
+      console.error('Error decrementing reading level:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to decrement reading level',
+        position: 'top',
+        topOffset: 60,
+        visibilityTime: 3000,
+        autoHide: true
+      });
+    }
+  };
 
   const fetchLearnerData = async () => {
     try {
@@ -59,7 +176,6 @@ export default function ProfileScreen() {
         email: user?.email || '',
         subscription: learnerData.subscription || 'free'
       });
-      setEditName(learnerData.name);
 
       //console.log('subscription', learnerData.subscription);
     } catch (error) {
@@ -67,67 +183,37 @@ export default function ProfileScreen() {
     }
   };
 
-  useEffect(() => {
-    fetchLearnerData();
-  }, [user?.email]);
-
-  const handleSave = async () => {
-    await saveChanges();
+  const loadAgreedAmount = async () => {
+    try {
+      const storedAmount = await AsyncStorage.getItem('learnerAgreedAmount');
+      if (storedAmount) {
+        setAgreedAmount(storedAmount);
+      }
+    } catch (error) {
+      console.error('Error loading agreed amount:', error);
+    }
   };
 
-  const saveChanges = async () => {
-    setIsSaving(true);
+  const loadReadingLevel = async () => {
     try {
-      const authData = await SecureStore.getItemAsync('auth');
-      if (!authData) {
-        throw new Error('No auth data found');
-      }
-      const { user } = JSON.parse(authData);
-
-      const response = await fetch(`${HOST_URL}/api/language-learners/${user.uid}/name`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: editName.trim(),
-        }),
-      });
-
-      //console.log('response', response);
-
-      if (!response.ok) {
-        throw new Error('Failed to update profile');
-      }
-
-      const updatedProfile = await response.json();
-      setProfileInfo(prev => ({
-        ...prev!,
-        name: updatedProfile.name,
-      }));
-
-      Toast.show({
-        type: 'success',
-        text1: 'Profile updated successfully',
-        position: 'top',
-        topOffset: 60,
-        visibilityTime: 3000,
-        autoHide: true
-      });
+      const readingLevel = await getCurrentReadingLevel();
+      console.log('Reading level loaded:', readingLevel);
+      setCurrentReadingLevel(readingLevel);
     } catch (error) {
-      console.error('Failed to update profile:', error);
-      Toast.show({
-        type: 'error',
-        text1: 'Error',
-        text2: 'Failed to update profile',
-        position: 'top',
-        topOffset: 60,
-        visibilityTime: 3000,
-        autoHide: true
-      });
-    } finally {
-      setIsSaving(false);
+      console.error('Error loading reading level:', error);
+      // Set default reading level even if there's an error
+      setCurrentReadingLevel('Explorer');
     }
+  };
+
+  useEffect(() => {
+    fetchLearnerData();
+    loadAgreedAmount();
+    loadReadingLevel();
+  }, [user?.email]);
+
+  const handleContractAmountChange = (newAmount: string) => {
+    setAgreedAmount(newAmount);
   };
 
   const handleLogout = async () => {
@@ -219,54 +305,220 @@ export default function ProfileScreen() {
     );
   };
 
+  const handleReloadBooks = async () => {
+    Alert.alert(
+      'Reload Books',
+      'This will clear all existing books and reload them from books.json. This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reload',
+          style: 'destructive',
+          onPress: async () => {
+            setIsReloadingBooks(true);
+            try {
+              await reloadBooksFromJSON();
+              Toast.show({
+                type: 'success',
+                text1: 'Books reloaded successfully',
+                text2: 'All books have been reloaded from books.json',
+                position: 'top',
+                topOffset: 60,
+                visibilityTime: 3000,
+                autoHide: true
+              });
+            } catch (error) {
+              console.error('Error reloading books:', error);
+              Toast.show({
+                type: 'error',
+                text1: 'Error',
+                text2: 'Failed to reload books',
+                position: 'top',
+                topOffset: 60,
+                visibilityTime: 3000,
+                autoHide: true
+              });
+            } finally {
+              setIsReloadingBooks(false);
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleClearLearnerReadingTable = async () => {
+    Alert.alert(
+      'Clear Learner Reading Table',
+      'This will clear all current reading progress. The user will need to start reading a new book. This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear',
+          style: 'destructive',
+          onPress: async () => {
+            setIsClearingLearnerReading(true);
+            try {
+              await clearLearnerReadingTable();
+              Toast.show({
+                type: 'success',
+                text1: 'Learner reading table cleared',
+                text2: 'All current reading progress has been deleted',
+                position: 'top',
+                topOffset: 60,
+                visibilityTime: 3000,
+                autoHide: true
+              });
+            } catch (error) {
+              console.error('Error clearing learner reading table:', error);
+              Toast.show({
+                type: 'error',
+                text1: 'Error',
+                text2: 'Failed to clear learner reading table',
+                position: 'top',
+                topOffset: 60,
+                visibilityTime: 3000,
+                autoHide: true
+              });
+            } finally {
+              setIsClearingLearnerReading(false);
+            }
+          }
+        }
+      ]
+    );
+  };
+
   return (
     <LinearGradient
       colors={isDark ? ['#1E1E1E', '#121212'] : ['#FFFFFF', '#F8FAFC', '#F1F5F9']}
-      style={[styles.gradient, { paddingTop: insets.top }]}
+      style={[styles.gradient]}
       start={{ x: 0, y: 0 }}
       end={{ x: 0, y: 1 }}
     >
+       <Header />
       <ScrollView
         style={styles.container}
         nestedScrollEnabled={true}
         keyboardShouldPersistTaps="handled"
       >
-        <Header/>
+       
 
         <ThemedView style={styles.content}>
           <ThemedView style={[styles.profileCard, { backgroundColor: isDark ? colors.card : '#FFFFFF' }]}>
-            
-            <View style={styles.editForm}>
-              <View style={styles.inputGroup}>
-                <ThemedText style={[styles.label, { color: colors.text }]}>Name</ThemedText>
-                <TextInput
-                  style={[styles.input, {
-                    backgroundColor: isDark ? colors.surface : '#FFFFFF',
-                    borderColor: colors.border,
-                    color: colors.text
-                  }]}
-                  value={editName}
-                  onChangeText={setEditName}
-                  placeholder="Enter your name"
-                  placeholderTextColor={isDark ? colors.textSecondary : '#94A3B8'}
-                  maxLength={50}
-                />
-                <ThemedText style={[styles.email, { color: colors.textSecondary, marginTop: 8 }]}>
-                  {user?.email}
+
+            <View style={styles.profileHeader}>
+              <View style={[styles.avatarContainer, { backgroundColor: colors.primary }]}>
+                <ThemedText style={[styles.avatarText, { color: '#FFFFFF' }]}>
+                  {profileInfo?.name ? profileInfo.name.charAt(0).toUpperCase() : 'U'}
                 </ThemedText>
               </View>
+              <View style={styles.profileDetails}>
+                <ThemedText style={[styles.profileName, { color: colors.text }]}>
+                  {profileInfo?.name || 'Loading...'}
+                </ThemedText>
+                <ThemedText style={[styles.profileEmail, { color: colors.textSecondary }]}>
+                  {user?.email || 'No email available'}
+                </ThemedText>
+              </View>
+            </View>
+          </ThemedView>
 
+
+
+
+
+          {/* Reading Levels Card */}
+          <ThemedView style={[styles.settingsCard, { backgroundColor: isDark ? colors.card : '#FFFFFF' }]}>
+            <ThemedText style={[styles.settingsTitle, { color: colors.text }]}>
+              📚 Reading Levels
+            </ThemedText>
+            <View style={styles.readingLevelsContainer}>
+              <View style={[
+                styles.readingLevelItem,
+                currentReadingLevel.toLowerCase() === 'explorer' && styles.readingLevelActive
+              ]}>
+                <ThemedText style={styles.levelEmoji}>🧭</ThemedText>
+                <View style={styles.levelInfo}>
+                  <ThemedText style={[styles.levelTitle, { color: colors.text }]}>
+                    Explorer Stories
+                  </ThemedText>
+                  <ThemedText style={[styles.levelDescription, { color: colors.textSecondary }]}>
+                    More Pictures, Shorter Words
+                  </ThemedText>
+                </View>
+                {currentReadingLevel.toLowerCase() === 'explorer' && (
+                  <ThemedText style={[styles.currentLevelBadge, { color: colors.primary }]}>
+                    Current
+                  </ThemedText>
+                )}
+              </View>
+
+              <View style={[
+                styles.readingLevelItem,
+                currentReadingLevel.toLowerCase() === 'builder' && styles.readingLevelActive
+              ]}>
+                <ThemedText style={styles.levelEmoji}>🧱</ThemedText>
+                <View style={styles.levelInfo}>
+                  <ThemedText style={[styles.levelTitle, { color: colors.text }]}>
+                    Builder Stories
+                  </ThemedText>
+                  <ThemedText style={[styles.levelDescription, { color: colors.textSecondary }]}>
+                    Everyday Drama, School Life
+                  </ThemedText>
+                </View>
+                {currentReadingLevel.toLowerCase() === 'builder' && (
+                  <ThemedText style={[styles.currentLevelBadge, { color: colors.primary }]}>
+                    Current
+                  </ThemedText>
+                )}
+              </View>
+
+              <View style={[
+                styles.readingLevelItem,
+                currentReadingLevel.toLowerCase() === 'challenger' && styles.readingLevelActive
+              ]}>
+                <ThemedText style={styles.levelEmoji}>🧗‍♂️</ThemedText>
+                <View style={styles.levelInfo}>
+                  <ThemedText style={[styles.levelTitle, { color: colors.text }]}>
+                    Challenger Stories
+                  </ThemedText>
+                  <ThemedText style={[styles.levelDescription, { color: colors.textSecondary }]}>
+                    More Plot, Bigger Words
+                  </ThemedText>
+                </View>
+                {currentReadingLevel.toLowerCase() === 'challenger' && (
+                  <ThemedText style={[styles.currentLevelBadge, { color: colors.primary }]}>
+                    Current
+                  </ThemedText>
+                )}
+              </View>
+            </View>
+          </ThemedView>
+
+          {/* Contract Amount Card */}
+          <ThemedView style={[styles.settingsCard, { backgroundColor: isDark ? colors.card : '#FFFFFF' }]}>
+            <ThemedText style={[styles.settingsTitle, { color: colors.text }]}>
+              💰 Contract Amount
+            </ThemedText>
+            <View style={styles.settingRow}>
+              <View style={styles.settingInfo}>
+                <ThemedText style={[styles.settingLabel, { color: colors.text }]}>
+                  Earnings per Chapter
+                </ThemedText>
+                <ThemedText style={[styles.settingDescription, { color: colors.textSecondary }]}>
+                  Currently earning {agreedAmount} per completed chapter
+                </ThemedText>
+              </View>
               <TouchableOpacity
                 style={[
-                  styles.button,
-                  styles.saveButton,
+                  styles.contractButton,
                   { backgroundColor: colors.primary }
                 ]}
-                onPress={handleSave}
-                disabled={isSaving}
+                onPress={() => setShowContractSelector(true)}
               >
-                <ThemedText style={styles.buttonText}>
-                  {isSaving ? 'Saving...' : 'Save Changes'}
+                <ThemedText style={[styles.contractButtonText, { color: '#FFFFFF' }]}>
+                  Change
                 </ThemedText>
               </TouchableOpacity>
             </View>
@@ -333,6 +585,54 @@ export default function ProfileScreen() {
                 {isClearingChapters ? 'Clearing...' : '🗑️ Clear Completed Chapters'}
               </ThemedText>
             </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.devButton,
+                { backgroundColor: isDark ? '#059669' : '#10B981' },
+                isReloadingBooks && styles.buttonDisabled
+              ]}
+              onPress={handleReloadBooks}
+              disabled={isReloadingBooks}
+            >
+              <ThemedText style={[styles.devButtonText, { color: '#FFFFFF' }]}>
+                {isReloadingBooks ? 'Reloading...' : '📚 Reload Books from JSON'}
+              </ThemedText>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.devButton,
+                { backgroundColor: isDark ? '#3B82F6' : '#2563EB' }
+              ]}
+              onPress={handleIncrementReadingLevel}
+            >
+              <ThemedText style={[styles.devButtonText, { color: '#FFFFFF' }]}>
+                ⬆️ Increment Reading Level
+              </ThemedText>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.devButton,
+                { backgroundColor: isDark ? '#F59E0B' : '#D97706' }
+              ]}
+              onPress={handleDecrementReadingLevel}
+            >
+              <ThemedText style={[styles.devButtonText, { color: '#FFFFFF' }]}>
+                ⬇️ Decrement Reading Level
+              </ThemedText>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.devButton,
+                { backgroundColor: isDark ? '#8B5CF6' : '#7C3AED' },
+                isClearingLearnerReading && styles.buttonDisabled
+              ]}
+              onPress={handleClearLearnerReadingTable}
+              disabled={isClearingLearnerReading}
+            >
+              <ThemedText style={[styles.devButtonText, { color: '#FFFFFF' }]}>
+                {isClearingLearnerReading ? 'Clearing...' : '📖 Clear Learner Reading Table'}
+              </ThemedText>
+            </TouchableOpacity>
           </ThemedView>
 
           {/* Show Upgrade to Pro button for free users */}
@@ -364,7 +664,7 @@ export default function ProfileScreen() {
                 { backgroundColor: isDark ? colors.surface : '#F8FAFC', borderColor: colors.border },
               ]}
               onPress={() => router.push('/')}
-              disabled={isLoggingOut} 
+              disabled={isLoggingOut}
             >
               <ThemedText style={[styles.actionButtonText, { color: colors.text }]}>
                 Close
@@ -419,6 +719,13 @@ export default function ProfileScreen() {
           }}
         />
       )}
+
+      <ContractAmountSelector
+        isVisible={showContractSelector}
+        onClose={() => setShowContractSelector(false)}
+        onAmountChanged={handleContractAmountChange}
+        currentAmount={agreedAmount}
+      />
 
       <Modal
         isVisible={showDeleteModal}
@@ -516,69 +823,33 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
-  profileCardHeader: {
-    position: 'relative',
+  profileHeader: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    gap: 16,
   },
-  closeButton: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
+  avatarContainer: {
     width: 40,
     height: 40,
     borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-    zIndex: 1,
   },
-  editForm: {
-    width: '100%',
-    gap: 16,
-    marginTop: 16,
+  avatarText: {
+    fontSize: 18,
+    fontWeight: '600',
   },
-  inputGroup: {
-    width: '100%',
+  profileDetails: {
+    flexDirection: 'column',
+    gap: 8,
   },
-  label: {
-    fontSize: 14,
-    fontWeight: '500',
-    marginBottom: 12,
-    marginVertical: 12,
-  },
-  input: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 16,
-    width: '100%',
-  },
-  button: {
-    borderWidth: 1,
-    borderRadius: 8,
-    padding: 16,
-    marginVertical: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  saveButton: {
-    borderRadius: 8,
-    padding: 16,
-    marginVertical: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  buttonText: {
-    color: '#FFFFFF',
+  profileName: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  profileEmail: {
+    fontSize: 14,
+    fontWeight: '500',
   },
   signOutContainer: {
     padding: 20,
@@ -656,13 +927,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     textAlign: 'center',
-  },
-  email: {
-    fontSize: 16,
-    marginTop: 4,
-  },
-  buttonDisabled: {
-    opacity: 0.5,
   },
   deleteAccountButton: {
     borderWidth: 1,
@@ -815,5 +1079,62 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
+  },
+  contractButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  contractButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  readingLevelsContainer: {
+    gap: 12,
+  },
+  readingLevelItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'transparent',
+    gap: 12,
+  },
+  readingLevelActive: {
+    borderColor: '#3B82F6',
+    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+  },
+  levelInfo: {
+    flex: 1,
+  },
+  levelTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  levelDescription: {
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  currentLevelBadge: {
+    fontSize: 10,
+    fontWeight: '600',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+    color: '#3B82F6',
+  },
+  buttonDisabled: {
+    opacity: 0.5,
+  },
+  levelEmoji: {
+    fontSize: 32,
+    marginRight: 8,
+    paddingTop: 18,
   },
 }); 

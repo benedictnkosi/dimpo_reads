@@ -12,6 +12,7 @@ interface RevenueCatContextType {
     identifyUser: (userId: string) => Promise<void>;
     resetUser: () => Promise<void>;
     showPaywall: () => Promise<void>;
+    isPremium: boolean;
 }
 
 const RevenueCatContext = createContext<RevenueCatContextType | undefined>(undefined);
@@ -154,6 +155,7 @@ export function RevenueCatProvider({ children }: { children: React.ReactNode }) 
         identifyUser,
         resetUser,
         showPaywall,
+        isPremium: customerInfo?.entitlements?.active?.premium?.isActive === true,
     };
 
     return (

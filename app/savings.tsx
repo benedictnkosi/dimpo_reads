@@ -462,7 +462,7 @@ export default function SavingsScreen() {
               <View style={styles.jugsHeader}>
                 <ThemedText style={styles.jugsTitle}>Your Savings Jars ({jugs.length})</ThemedText>
                 <Pressable style={styles.smallButton} onPress={() => setShowAddModal(true)}>
-                  <ThemedText style={styles.smallButtonText}>➕ Add Jug</ThemedText>
+                  <ThemedText style={styles.smallButtonText}>➕ Add Jar</ThemedText>
                 </Pressable>
               </View>
 
@@ -515,7 +515,7 @@ export default function SavingsScreen() {
             <ThemedText style={styles.modalTitle}>Create New Savings Jar</ThemedText>
             <TextInput
               style={styles.modalInput}
-              placeholder="Enter jug name..."
+              placeholder="Enter jar name..."
               placeholderTextColor={colors.textSecondary}
               value={newJugName}
               onChangeText={setNewJugName}

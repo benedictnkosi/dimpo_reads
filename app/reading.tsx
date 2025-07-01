@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, StyleSheet, Pressable, ActivityIndicator, Alert, Text } from 'react-native';
 import { useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
@@ -8,13 +9,14 @@ import { ChapterContent } from './components/reading/chapter-content';
 import { BookQuiz } from './components/reading/book-quiz';
 import { useTheme } from '@/contexts/ThemeContext';
 import { analytics } from '@/services/analytics';
+import { HOST_URL } from '@/config/api';
 import { 
   getCurrentReadingStatus,
   finishCurrentReading,
   updateReading,
   type CurrentReading
 } from '@/services/readingService';
-import { getAllBooks } from '@/services/database';
+import { getAllBooks, initializeReadingLevel } from '@/services/database';
 
 interface Book {
   id: number;
@@ -39,13 +41,24 @@ export default function ReadingScreen() {
   const [currentBook, setCurrentBook] = useState<Book | null>(null);
   const [readingProgress, setReadingProgress] = useState(0);
   const [showQuiz, setShowQuiz] = useState(false);
+  const [readingSpeed, setReadingSpeed] = useState<number>(0);
 
   const router = useRouter();
   const { colors, isDark } = useTheme();
 
+  // Initialize reading level if not set
+  const initializeUserReadingLevel = async () => {
+    try {
+      await initializeReadingLevel();
+    } catch (error) {
+      console.error('Error initializing reading level in ReadingScreen:', error);
+    }
+  };
+
   // Load reading data
   useEffect(() => {
     loadReadingData();
+    initializeUserReadingLevel(); // Initialize reading level
   }, []);
 
   const loadReadingData = async () => {
@@ -65,7 +78,10 @@ export default function ReadingScreen() {
 
       // Get the current book details
       const allBooks = await getAllBooks();
-      const book = allBooks.find(b => b.book_id === readingStatus.book_id);
+      const book = allBooks.find(b => 
+        b.book_id === readingStatus.book_id && 
+        b.chapter_number === readingStatus.chapter_number
+      );
       
       if (!book) {
         setError('Book not found');
@@ -114,8 +130,9 @@ export default function ReadingScreen() {
     );
   };
 
-  const handleStartQuiz = (wordCount: number) => {
-    console.log('Starting quiz with word count:', wordCount);
+  const handleStartQuiz = (wordCount: number, readingSpeedWPM: number) => {
+    console.log('Starting quiz with word count:', wordCount, 'and reading speed:', readingSpeedWPM, 'WPM');
+    setReadingSpeed(readingSpeedWPM);
     setShowQuiz(true);
   };
 
@@ -198,7 +215,7 @@ export default function ReadingScreen() {
       flex: 1,
       backgroundColor: colors.surface,
       borderRadius: 16,
-      padding: 20,
+      paddingVertical: 20,
       marginBottom: 24,
       borderWidth: 1,
       borderColor: colors.border,
@@ -300,6 +317,29 @@ export default function ReadingScreen() {
               content={currentBook.content}
               onProgress={setReadingProgress}
               onStartQuiz={handleStartQuiz}
+              readingLevel={currentBook.reading_level}
+              image1={currentBook.images ? (() => {
+                try {
+                  const imagesData = JSON.parse(currentBook.images);
+                  return imagesData.illustrations && imagesData.illustrations.length > 0 
+                    ? imagesData.illustrations[0]
+                    : undefined;
+                } catch (error) {
+                  console.error('Error parsing images JSON:', error);
+                  return undefined;
+                }
+              })() : undefined}
+              image2={currentBook.images ? (() => {
+                try {
+                  const imagesData = JSON.parse(currentBook.images);
+                  return imagesData.illustrations && imagesData.illustrations.length > 1 
+                    ? imagesData.illustrations[1]
+                    : undefined;
+                } catch (error) {
+                  console.error('Error parsing images JSON:', error);
+                  return undefined;
+                }
+              })() : undefined}
             />
           </View>
 
@@ -314,6 +354,7 @@ export default function ReadingScreen() {
             chapterId={currentBook.id}
             onClose={handleQuizClose}
             wordCount={currentBook.word_count}
+            readingSpeed={readingSpeed}
           />
         </View>
       )}

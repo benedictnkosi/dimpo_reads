@@ -91,7 +91,7 @@ export function Header() {
     : avatarImages['default'];
 
   return (
-    <View style={[styles.header, { paddingTop: insets.top + 8, backgroundColor: isDark ? '#1F2937' : '#F8FAFC' }]}>
+    <View style={[styles.header, { paddingTop: insets.top, backgroundColor: isDark ? '#1F2937' : '#F8FAFC' }]}>
       <View style={styles.row}>
         <View style={styles.greetingSection}>
           <ThemedText style={[styles.greetingText, { color: isDark ? '#F3F4F6' : '#22223B' }]}>

@@ -94,7 +94,7 @@ export const ContinueReadingCard: React.FC<ContinueReadingCardProps> = ({
       justifyContent: 'space-between',
       marginBottom: 8,
     },
-    genreBadge: {
+    readingLevel: {
       backgroundColor: 'rgba(255, 255, 255, 0.2)',
       paddingHorizontal: 8,
       paddingVertical: 4,
@@ -102,23 +102,12 @@ export const ContinueReadingCard: React.FC<ContinueReadingCardProps> = ({
       borderWidth: 1,
       borderColor: 'rgba(255, 255, 255, 0.3)',
     },
-    genreText: {
+    readingLevelText: {
       color: '#fff',
       fontSize: 10,
       fontWeight: '600',
       textTransform: 'uppercase',
       letterSpacing: 0.5,
-    },
-    readingLevel: {
-      backgroundColor: 'rgba(255, 255, 255, 0.15)',
-      paddingHorizontal: 6,
-      paddingVertical: 2,
-      borderRadius: 8,
-    },
-    readingLevelText: {
-      color: '#fff',
-      fontSize: 9,
-      fontWeight: '500',
     },
     title: {
       fontSize: 18,
@@ -200,20 +189,19 @@ export const ContinueReadingCard: React.FC<ContinueReadingCardProps> = ({
         <View style={styles.contentContainer}>
           <View>
             <View style={styles.header}>
-              <View style={styles.genreBadge}>
-                <ThemedText style={styles.genreText}>
-                  {book.genre || 'Reading'}
+              <View style={styles.readingLevel}>
+                <ThemedText style={styles.readingLevelText}>
+                  {book.genre || 'General'}
                 </ThemedText>
               </View>
-              
             </View>
             
             <ThemedText style={styles.title} numberOfLines={2}>
-              {book.chapter_name}
+              {book.title}
             </ThemedText>
             
             <ThemedText style={styles.subtitle} numberOfLines={2}>
-              Chapter {book.chapter_number} • {book.sub_genre || 'Story'}
+              {book.chapter_name}
             </ThemedText>
           </View>
           

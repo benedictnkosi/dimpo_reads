@@ -1,4 +1,5 @@
 import * as SQLite from 'expo-sqlite';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 let db: SQLite.SQLiteDatabase | null = null;
 
@@ -28,6 +29,75 @@ const createTables = () => {
     // Ignore error if column already exists
   }
 
+  // Migration: Fix book table schema to allow multiple chapters per book
+  try {
+    // Check if the old unique constraint exists on book_id
+    const tableInfo = db.getAllSync<{
+      cid: number;
+      name: string;
+      type: string;
+      notnull: number;
+      dflt_value: string | null;
+      pk: number;
+    }>("PRAGMA table_info(book)");
+    const bookIdColumn = tableInfo.find(col => col.name === 'book_id');
+    
+    if (bookIdColumn) {
+      // Check if there's a unique constraint by looking at the index
+      const indexes = db.getAllSync<{
+        name: string;
+        type: string;
+        tbl_name: string;
+        sql: string;
+      }>("PRAGMA index_list(book)");
+      
+      const hasUniqueBookIdIndex = indexes.some(index => 
+        index.sql && index.sql.includes('UNIQUE') && index.sql.includes('book_id')
+      );
+      
+      if (hasUniqueBookIdIndex) {
+        // This means book_id has a unique constraint, we need to recreate the table
+        console.log('Migrating book table schema to support multiple chapters per book...');
+        
+        // Create a temporary table with the new schema
+        db.execSync(`
+          CREATE TABLE book_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            book_id TEXT NOT NULL,
+            title TEXT,
+            genre TEXT NOT NULL,
+            sub_genre TEXT NOT NULL,
+            chapter_number INTEGER NOT NULL,
+            chapter_name TEXT NOT NULL,
+            content TEXT NOT NULL,
+            quiz TEXT,
+            images TEXT,
+            word_count INTEGER NOT NULL DEFAULT 0,
+            reading_level TEXT NOT NULL,
+            created TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(book_id, chapter_number)
+          );
+        `);
+        
+        // Copy data from old table to new table
+        db.execSync(`
+          INSERT INTO book_new (id, book_id, genre, sub_genre, chapter_number, chapter_name, content, quiz, images, word_count, reading_level, created, updated)
+          SELECT id, book_id, genre, sub_genre, chapter_number, chapter_name, content, quiz, images, word_count, reading_level, created, updated
+          FROM book;
+        `);
+        
+        // Drop old table and rename new table
+        db.execSync('DROP TABLE book');
+        db.execSync('ALTER TABLE book_new RENAME TO book');
+        
+        console.log('Book table migration completed successfully');
+      }
+    }
+  } catch (e) {
+    console.log('Book table migration not needed or failed:', e);
+  }
+
   try {
     db.execSync(`
       CREATE TABLE IF NOT EXISTS question_report (
@@ -42,7 +112,8 @@ const createTables = () => {
     db.execSync(`
       CREATE TABLE IF NOT EXISTS book (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        book_id TEXT NOT NULL UNIQUE,
+        book_id TEXT NOT NULL,
+        title TEXT,
         genre TEXT NOT NULL,
         sub_genre TEXT NOT NULL,
         chapter_number INTEGER NOT NULL,
@@ -53,7 +124,8 @@ const createTables = () => {
         word_count INTEGER NOT NULL DEFAULT 0,
         reading_level TEXT NOT NULL,
         created TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        updated TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(book_id, chapter_number)
       );
     `);
 
@@ -224,6 +296,7 @@ export const clearAllQuestionReports = (): Promise<void> => {
 // Book Functions
 export const insertBook = (bookData: {
   book_id: string;
+  title?: string;
   genre: string;
   sub_genre: string;
   chapter_number: number;
@@ -242,12 +315,13 @@ export const insertBook = (bookData: {
 
     try {
       db.runSync(`
-        INSERT OR IGNORE INTO book (
-          book_id, genre, sub_genre, chapter_number, chapter_name, content, 
+        INSERT OR REPLACE INTO book (
+          book_id, title, genre, sub_genre, chapter_number, chapter_name, content, 
           quiz, images, word_count, reading_level
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
         bookData.book_id,
+        bookData.title || null,
         bookData.genre,
         bookData.sub_genre,
         bookData.chapter_number,
@@ -270,6 +344,7 @@ export const insertBook = (bookData: {
 export const getAllBooks = (): Promise<Array<{
   id: number;
   book_id: string;
+  title: string | null;
   genre: string;
   sub_genre: string;
   chapter_number: number;
@@ -292,6 +367,7 @@ export const getAllBooks = (): Promise<Array<{
       const result = db.getAllSync<{
         id: number;
         book_id: string;
+        title: string | null;
         genre: string;
         sub_genre: string;
         chapter_number: number;
@@ -317,6 +393,7 @@ export const getAllBooks = (): Promise<Array<{
 export const getBooksByGenre = (genre: string): Promise<Array<{
   id: number;
   book_id: string;
+  title: string | null;
   genre: string;
   sub_genre: string;
   chapter_number: number;
@@ -339,6 +416,7 @@ export const getBooksByGenre = (genre: string): Promise<Array<{
       const result = db.getAllSync<{
         id: number;
         book_id: string;
+        title: string | null;
         genre: string;
         sub_genre: string;
         chapter_number: number;
@@ -989,6 +1067,18 @@ export const getCurrentReading = (): Promise<{
     }
 
     try {
+      // First, let's see all reading entries
+      const allReadings = db.getAllSync<{
+        id: number;
+        book_id: string;
+        chapter_number: number;
+        chapter_name: string;
+        reading_date: string;
+        created: string;
+      }>('SELECT * FROM learner_reading ORDER BY reading_date DESC');
+      
+      console.log(`[getCurrentReading] All reading entries:`, allReadings.map(r => `${r.book_id}:${r.chapter_number}:${r.chapter_name}`));
+      
       const result = db.getFirstSync<{
         id: number;
         book_id: string;
@@ -999,6 +1089,13 @@ export const getCurrentReading = (): Promise<{
       }>(
         'SELECT * FROM learner_reading ORDER BY reading_date DESC LIMIT 1'
       );
+      
+      if (result) {
+        console.log(`[getCurrentReading] Returning: ${result.book_id}:${result.chapter_number}:${result.chapter_name}`);
+      } else {
+        console.log(`[getCurrentReading] No reading entry found`);
+      }
+      
       resolve(result || null);
     } catch (error) {
       console.error('Error fetching current reading:', error);
@@ -1048,10 +1145,35 @@ export const updateReadingProgress = (bookData: {
     }
 
     try {
+      console.log(`[updateReadingProgress] Updating reading progress: book_id=${bookData.book_id}, chapter_number=${bookData.chapter_number}, chapter_name=${bookData.chapter_name}`);
+      
+      // First, let's see what's currently in the learner_reading table
+      const currentReadings = db.getAllSync<{
+        id: number;
+        book_id: string;
+        chapter_number: number;
+        chapter_name: string;
+        reading_date: string;
+      }>('SELECT * FROM learner_reading WHERE book_id = ? ORDER BY reading_date DESC', [bookData.book_id]);
+      
+      console.log(`[updateReadingProgress] Current readings for book_id ${bookData.book_id}:`, currentReadings.map(r => `${r.chapter_number}:${r.chapter_name}`));
+      
       db.runSync(
         'UPDATE learner_reading SET chapter_number = ?, chapter_name = ?, reading_date = CURRENT_TIMESTAMP WHERE book_id = ?',
         [bookData.chapter_number, bookData.chapter_name, bookData.book_id]
       );
+      
+      // Check what was updated
+      const updatedReadings = db.getAllSync<{
+        id: number;
+        book_id: string;
+        chapter_number: number;
+        chapter_name: string;
+        reading_date: string;
+      }>('SELECT * FROM learner_reading WHERE book_id = ? ORDER BY reading_date DESC', [bookData.book_id]);
+      
+      console.log(`[updateReadingProgress] Updated readings for book_id ${bookData.book_id}:`, updatedReadings.map(r => `${r.chapter_number}:${r.chapter_name}`));
+      
       console.log('Updated reading progress successfully');
       resolve();
     } catch (error) {
@@ -1108,25 +1230,7 @@ export const getRandomBook = (): Promise<{
   });
 };
 
-export const finishReadingBook = (): Promise<void> => {
-  return new Promise((resolve, reject) => {
-    if (!db) {
-      reject(new Error('Database not initialized'));
-      return;
-    }
-
-    try {
-      db.runSync('DELETE FROM learner_reading');
-      console.log('Finished reading book successfully');
-      resolve();
-    } catch (error) {
-      console.error('Error finishing reading book:', error);
-      reject(error);
-    }
-  });
-};
-
-export const getBookByChapterId = (chapterId: number): Promise<{
+export const getRandomBookByReadingLevel = (readingLevel: string): Promise<{
   id: number;
   book_id: string;
   genre: string;
@@ -1163,6 +1267,205 @@ export const getBookByChapterId = (chapterId: number): Promise<{
         created: string;
         updated: string;
       }>(
+        'SELECT * FROM book WHERE reading_level = ? ORDER BY RANDOM() LIMIT 1',
+        [readingLevel]
+      );
+      resolve(result || null);
+    } catch (error) {
+      console.error('Error fetching random book by reading level:', error);
+      reject(error);
+    }
+  });
+};
+
+export const getRandomUncompletedBook = (learnerUid: string): Promise<{
+  id: number;
+  book_id: string;
+  genre: string;
+  sub_genre: string;
+  chapter_number: number;
+  chapter_name: string;
+  content: string;
+  quiz: string | null;
+  images: string | null;
+  word_count: number;
+  reading_level: string;
+  created: string;
+  updated: string;
+} | null> => {
+  return new Promise((resolve, reject) => {
+    if (!db) {
+      reject(new Error('Database not initialized'));
+      return;
+    }
+
+    try {
+      // Get a random book that the user hasn't completed with a score of 80+
+      const result = db.getFirstSync<{
+        id: number;
+        book_id: string;
+        genre: string;
+        sub_genre: string;
+        chapter_number: number;
+        chapter_name: string;
+        content: string;
+        quiz: string | null;
+        images: string | null;
+        word_count: number;
+        reading_level: string;
+        created: string;
+        updated: string;
+      }>(
+        `SELECT b.* FROM book b
+         WHERE b.id NOT IN (
+           SELECT cc.chapter_id 
+           FROM chapter_completion cc 
+           WHERE cc.learner_uid = ? AND cc.score >= 80
+         )
+         ORDER BY RANDOM() 
+         LIMIT 1`,
+        [learnerUid]
+      );
+      resolve(result || null);
+    } catch (error) {
+      console.error('Error fetching random uncompleted book:', error);
+      reject(error);
+    }
+  });
+};
+
+export const getRandomUncompletedBookByReadingLevel = (learnerUid: string, readingLevel: string): Promise<{
+  id: number;
+  book_id: string;
+  genre: string;
+  sub_genre: string;
+  chapter_number: number;
+  chapter_name: string;
+  content: string;
+  quiz: string | null;
+  images: string | null;
+  word_count: number;
+  reading_level: string;
+  created: string;
+  updated: string;
+} | null> => {
+  return new Promise((resolve, reject) => {
+    if (!db) {
+      reject(new Error('Database not initialized'));
+      return;
+    }
+
+    try {
+      // Get a random book at the specified reading level that the user hasn't completed with a score of 80+
+      const result = db.getFirstSync<{
+        id: number;
+        book_id: string;
+        genre: string;
+        sub_genre: string;
+        chapter_number: number;
+        chapter_name: string;
+        content: string;
+        quiz: string | null;
+        images: string | null;
+        word_count: number;
+        reading_level: string;
+        created: string;
+        updated: string;
+      }>(
+        `SELECT b.* FROM book b
+         WHERE b.reading_level = ? 
+         AND b.id NOT IN (
+           SELECT cc.chapter_id 
+           FROM chapter_completion cc 
+           WHERE cc.learner_uid = ? AND cc.score >= 80
+         )
+         ORDER BY RANDOM() 
+         LIMIT 1`,
+        [readingLevel, learnerUid]
+      );
+      resolve(result || null);
+    } catch (error) {
+      console.error('Error fetching random uncompleted book by reading level:', error);
+      reject(error);
+    }
+  });
+};
+
+export const finishReadingBook = (): Promise<void> => {
+  return new Promise((resolve, reject) => {
+    if (!db) {
+      reject(new Error('Database not initialized'));
+      return;
+    }
+
+    try {
+      db.runSync('DELETE FROM learner_reading');
+      console.log('Finished reading book successfully');
+      resolve();
+    } catch (error) {
+      console.error('Error finishing reading book:', error);
+      reject(error);
+    }
+  });
+};
+
+export const clearLearnerReadingTable = (): Promise<void> => {
+  return new Promise((resolve, reject) => {
+    if (!db) {
+      reject(new Error('Database not initialized'));
+      return;
+    }
+
+    try {
+      db.runSync('DELETE FROM learner_reading');
+      console.log('Learner reading table cleared successfully');
+      resolve();
+    } catch (error) {
+      console.error('Error clearing learner reading table:', error);
+      reject(error);
+    }
+  });
+};
+
+export const getBookByChapterId = (chapterId: number): Promise<{
+  id: number;
+  book_id: string;
+  title: string | null;
+  genre: string;
+  sub_genre: string;
+  chapter_number: number;
+  chapter_name: string;
+  content: string;
+  quiz: string | null;
+  images: string | null;
+  word_count: number;
+  reading_level: string;
+  created: string;
+  updated: string;
+} | null> => {
+  return new Promise((resolve, reject) => {
+    if (!db) {
+      reject(new Error('Database not initialized'));
+      return;
+    }
+
+    try {
+      const result = db.getFirstSync<{
+        id: number;
+        book_id: string;
+        title: string | null;
+        genre: string;
+        sub_genre: string;
+        chapter_number: number;
+        chapter_name: string;
+        content: string;
+        quiz: string | null;
+        images: string | null;
+        word_count: number;
+        reading_level: string;
+        created: string;
+        updated: string;
+      }>(
         'SELECT * FROM book WHERE id = ?',
         [chapterId]
       );
@@ -1174,10 +1477,67 @@ export const getBookByChapterId = (chapterId: number): Promise<{
   });
 };
 
+export const getBookByBookIdAndChapterNumber = (bookId: string, chapterNumber: number): Promise<{
+  id: number;
+  book_id: string;
+  genre: string;
+  sub_genre: string;
+  chapter_number: number;
+  chapter_name: string;
+  content: string;
+  quiz: string | null;
+  images: string | null;
+  word_count: number;
+  reading_level: string;
+  created: string;
+  updated: string;
+} | null> => {
+  return new Promise((resolve, reject) => {
+    if (!db) {
+      reject(new Error('Database not initialized'));
+      return;
+    }
+
+    try {
+      console.log(`[getBookByBookIdAndChapterNumber] Looking for book_id=${bookId}, chapter_number=${chapterNumber}`);
+      
+      const result = db.getFirstSync<{
+        id: number;
+        book_id: string;
+        genre: string;
+        sub_genre: string;
+        chapter_number: number;
+        chapter_name: string;
+        content: string;
+        quiz: string | null;
+        images: string | null;
+        word_count: number;
+        reading_level: string;
+        created: string;
+        updated: string;
+      }>(
+        'SELECT * FROM book WHERE book_id = ? AND chapter_number = ?',
+        [bookId, chapterNumber]
+      );
+      
+      if (result) {
+        console.log(`[getBookByBookIdAndChapterNumber] Found: ${result.chapter_name} (${result.reading_level})`);
+      } else {
+        console.log(`[getBookByBookIdAndChapterNumber] No book found for book_id=${bookId}, chapter_number=${chapterNumber}`);
+      }
+      
+      resolve(result || null);
+    } catch (error) {
+      console.error('Error fetching book by book ID and chapter number:', error);
+      reject(error);
+    }
+  });
+};
+
 export const insertChapterCompletion = (completionData: {
   learnerUid: string;
   chapterId: number;
-  duration: number;
+  readingSpeed: number;
   score: number;
 }): Promise<void> => {
   return new Promise((resolve, reject) => {
@@ -1189,7 +1549,7 @@ export const insertChapterCompletion = (completionData: {
     try {
       db.runSync(
         'INSERT INTO chapter_completion (learner_uid, chapter_id, duration, score) VALUES (?, ?, ?, ?)',
-        [completionData.learnerUid, completionData.chapterId, completionData.duration, completionData.score]
+        [completionData.learnerUid, completionData.chapterId, completionData.readingSpeed, completionData.score]
       );
       console.log('Chapter completion recorded successfully');
       resolve();
@@ -1323,6 +1683,24 @@ export const clearAllCompletedChapters = (): Promise<void> => {
   });
 };
 
+export const clearAllBooks = (): Promise<void> => {
+  return new Promise((resolve, reject) => {
+    if (!db) {
+      reject(new Error('Database not initialized'));
+      return;
+    }
+
+    try {
+      db.runSync('DELETE FROM book');
+      console.log('All books cleared successfully');
+      resolve();
+    } catch (error) {
+      console.error('Error clearing books:', error);
+      reject(error);
+    }
+  });
+};
+
 export const isChapterCompleted = (chapterId: number): Promise<boolean> => {
   return new Promise((resolve, reject) => {
     if (!db) {
@@ -1338,6 +1716,46 @@ export const isChapterCompleted = (chapterId: number): Promise<boolean> => {
       resolve((result?.count || 0) > 0);
     } catch (error) {
       console.error('Error checking if chapter is completed:', error);
+      reject(error);
+    }
+  });
+};
+
+export const hasUserCompletedChapter = (learnerUid: string, chapterId: number): Promise<boolean> => {
+  return new Promise((resolve, reject) => {
+    if (!db) {
+      reject(new Error('Database not initialized'));
+      return;
+    }
+
+    try {
+      const result = db.getFirstSync<{ count: number }>(
+        'SELECT COUNT(*) as count FROM chapter_completion WHERE learner_uid = ? AND chapter_id = ?',
+        [learnerUid, chapterId]
+      );
+      resolve((result?.count || 0) > 0);
+    } catch (error) {
+      console.error('Error checking if user has completed chapter:', error);
+      reject(error);
+    }
+  });
+};
+
+export const hasUserCompletedChapterWithScore = (learnerUid: string, chapterId: number, minScore: number = 80): Promise<boolean> => {
+  return new Promise((resolve, reject) => {
+    if (!db) {
+      reject(new Error('Database not initialized'));
+      return;
+    }
+
+    try {
+      const result = db.getFirstSync<{ count: number }>(
+        'SELECT COUNT(*) as count FROM chapter_completion WHERE learner_uid = ? AND chapter_id = ? AND score >= ?',
+        [learnerUid, chapterId, minScore]
+      );
+      resolve((result?.count || 0) > 0);
+    } catch (error) {
+      console.error('Error checking if user has completed chapter with score:', error);
       reject(error);
     }
   });
@@ -1391,7 +1809,92 @@ export const getNextChapter = (bookId: string, currentChapterNumber: number): Pr
   });
 };
 
-export const getQuickReportData = (): Promise<{
+export const getNextChapterByReadingLevel = (bookId: string, currentChapterNumber: number, readingLevel: string): Promise<{
+  id: number;
+  book_id: string;
+  genre: string;
+  sub_genre: string;
+  chapter_number: number;
+  chapter_name: string;
+  content: string;
+  quiz: string | null;
+  images: string | null;
+  word_count: number;
+  reading_level: string;
+  created: string;
+  updated: string;
+} | null> => {
+  return new Promise((resolve, reject) => {
+    if (!db) {
+      reject(new Error('Database not initialized'));
+      return;
+    }
+
+    try {
+      console.log(`[getNextChapterByReadingLevel] Looking for next chapter: book_id=${bookId}, currentChapter=${currentChapterNumber}, readingLevel=${readingLevel}`);
+      
+      // First, let's debug what chapters exist for this book_id
+      const allChaptersForBook = db.getAllSync<{
+        id: number;
+        book_id: string;
+        chapter_number: number;
+        chapter_name: string;
+        reading_level: string;
+      }>(
+        'SELECT id, book_id, chapter_number, chapter_name, reading_level FROM book WHERE book_id = ? ORDER BY chapter_number ASC',
+        [bookId]
+      );
+      
+      console.log(`[getNextChapterByReadingLevel] All chapters for book ${bookId}:`, allChaptersForBook.map(ch => `${ch.chapter_number}:${ch.chapter_name}(${ch.reading_level})`));
+      
+      // Now get the next chapter with the specific criteria
+      const query = 'SELECT * FROM book WHERE book_id = ? AND chapter_number > ? AND reading_level = ? ORDER BY chapter_number ASC LIMIT 1';
+      const params = [bookId, currentChapterNumber, readingLevel];
+      console.log(`[getNextChapterByReadingLevel] Executing query: ${query} with params:`, params);
+      
+      const result = db.getFirstSync<{
+        id: number;
+        book_id: string;
+        genre: string;
+        sub_genre: string;
+        chapter_number: number;
+        chapter_name: string;
+        content: string;
+        quiz: string | null;
+        images: string | null;
+        word_count: number;
+        reading_level: string;
+        created: string;
+        updated: string;
+      }>(query, params);
+      
+      if (result) {
+        console.log(`[getNextChapterByReadingLevel] Found next chapter: ${result.chapter_number}:${result.chapter_name} (${result.reading_level})`);
+      } else {
+        console.log(`[getNextChapterByReadingLevel] No next chapter found for book_id=${bookId}, currentChapter=${currentChapterNumber}, readingLevel=${readingLevel}`);
+        
+        // Let's see what chapters would match without the reading level filter
+        const chaptersWithoutLevelFilter = db.getAllSync<{
+          chapter_number: number;
+          chapter_name: string;
+          reading_level: string;
+        }>(
+          'SELECT chapter_number, chapter_name, reading_level FROM book WHERE book_id = ? AND chapter_number > ? ORDER BY chapter_number ASC',
+          [bookId, currentChapterNumber]
+        );
+        
+        console.log(`[getNextChapterByReadingLevel] Chapters without reading level filter:`, chaptersWithoutLevelFilter.map(ch => `${ch.chapter_number}:${ch.chapter_name}(${ch.reading_level})`));
+      }
+      
+      resolve(result || null);
+    } catch (error) {
+      console.error('Error fetching next chapter by reading level:', error);
+      reject(error);
+    }
+  });
+};
+
+export const getQuickReportData = (learnerUid?: string): Promise<{
   booksRead: number;
   totalEarned: number;
   chaptersRead: number;
@@ -1403,10 +1906,21 @@ export const getQuickReportData = (): Promise<{
     }
 
     try {
+      let chaptersQuery = 'SELECT COUNT(*) as count FROM chapter_completion';
+      let booksQuery = `SELECT COUNT(DISTINCT b.book_id) as count 
+                       FROM chapter_completion cc
+                       JOIN book b ON cc.chapter_id = b.id`;
+      
+      // If learnerUid is provided, filter by user and score >= 80
+      if (learnerUid) {
+        chaptersQuery += ' WHERE learner_uid = ? AND score >= 80';
+        booksQuery += ' WHERE cc.learner_uid = ? AND cc.score >= 80';
+      }
+      
       // Get completed chapters count
-      const chaptersResult = db.getFirstSync<{ count: number }>(
-        'SELECT COUNT(*) as count FROM chapter_completion'
-      );
+      const chaptersResult = learnerUid 
+        ? db.getFirstSync<{ count: number }>(chaptersQuery, [learnerUid])
+        : db.getFirstSync<{ count: number }>(chaptersQuery);
       
       // Get total earned from all positive savings transactions
       const earningsResult = db.getFirstSync<{ total: number }>(
@@ -1414,11 +1928,9 @@ export const getQuickReportData = (): Promise<{
       );
       
       // Get unique books read (distinct book_ids from completed chapters)
-      const booksResult = db.getFirstSync<{ count: number }>(
-        `SELECT COUNT(DISTINCT b.book_id) as count 
-         FROM chapter_completion cc
-         JOIN book b ON cc.chapter_id = b.id`
-      );
+      const booksResult = learnerUid
+        ? db.getFirstSync<{ count: number }>(booksQuery, [learnerUid])
+        : db.getFirstSync<{ count: number }>(booksQuery);
       
       resolve({
         booksRead: booksResult?.count || 0,
@@ -1427,6 +1939,604 @@ export const getQuickReportData = (): Promise<{
       });
     } catch (error) {
       console.error('Error fetching QuickReport data:', error);
+      reject(error);
+    }
+  });
+};
+
+export const getQuickReportDataByPeriod = (learnerUid?: string, period: 'lifetime' | 'week' | 'month' = 'lifetime'): Promise<{
+  booksRead: number;
+  totalEarned: number;
+  chaptersRead: number;
+}> => {
+  return new Promise((resolve, reject) => {
+    if (!db) {
+      reject(new Error('Database not initialized'));
+      return;
+    }
+
+    try {
+      // Calculate date filters based on period
+      let dateFilter = '';
+      let dateParams: string[] = [];
+      
+      if (period === 'week') {
+        dateFilter = 'AND cc.completed_at >= datetime("now", "-7 days")';
+      } else if (period === 'month') {
+        dateFilter = 'AND cc.completed_at >= datetime("now", "-30 days")';
+      }
+      
+      let chaptersQuery = `SELECT COUNT(*) as count FROM chapter_completion cc WHERE 1=1 ${dateFilter}`;
+      let booksQuery = `SELECT COUNT(DISTINCT b.book_id) as count 
+                       FROM chapter_completion cc
+                       JOIN book b ON cc.chapter_id = b.id
+                       WHERE 1=1 ${dateFilter}`;
+      
+      // If learnerUid is provided, filter by user and score >= 80
+      if (learnerUid) {
+        chaptersQuery += ' AND learner_uid = ? AND score >= 80';
+        booksQuery += ' AND cc.learner_uid = ? AND cc.score >= 80';
+        dateParams = [learnerUid];
+      }
+      
+      // Get completed chapters count
+      const chaptersResult = learnerUid 
+        ? db.getFirstSync<{ count: number }>(chaptersQuery, dateParams)
+        : db.getFirstSync<{ count: number }>(chaptersQuery);
+      
+      // Get total earned from positive savings transactions with date filter
+      let earningsQuery = 'SELECT COALESCE(SUM(amount), 0) as total FROM savings_transaction WHERE amount > 0';
+      let earningsParams: string[] = [];
+      
+      if (period === 'week') {
+        earningsQuery += ' AND date >= datetime("now", "-7 days")';
+      } else if (period === 'month') {
+        earningsQuery += ' AND date >= datetime("now", "-30 days")';
+      }
+      
+      const earningsResult = db.getFirstSync<{ total: number }>(earningsQuery, earningsParams);
+      
+      // Get unique books read (distinct book_ids from completed chapters)
+      const booksResult = learnerUid
+        ? db.getFirstSync<{ count: number }>(booksQuery, dateParams)
+        : db.getFirstSync<{ count: number }>(booksQuery);
+      
+      resolve({
+        booksRead: booksResult?.count || 0,
+        totalEarned: earningsResult?.total || 0,
+        chaptersRead: chaptersResult?.count || 0
+      });
+    } catch (error) {
+      console.error('Error fetching QuickReport data by period:', error);
+      reject(error);
+    }
+  });
+};
+
+export const getUserCompletedChaptersWithScore = (learnerUid: string, minScore: number = 80): Promise<Array<{
+  id: number;
+  learner_uid: string;
+  chapter_id: number;
+  duration: number;
+  score: number;
+  completed_at: string;
+  created: string;
+  book_id: string;
+  genre: string;
+  sub_genre: string;
+  chapter_number: number;
+  chapter_name: string;
+  reading_level: string;
+}>> => {
+  return new Promise((resolve, reject) => {
+    if (!db) {
+      reject(new Error('Database not initialized'));
+      return;
+    }
+
+    try {
+      const result = db.getAllSync<{
+        id: number;
+        learner_uid: string;
+        chapter_id: number;
+        duration: number;
+        score: number;
+        completed_at: string;
+        created: string;
+        book_id: string;
+        genre: string;
+        sub_genre: string;
+        chapter_number: number;
+        chapter_name: string;
+        reading_level: string;
+      }>(
+        `SELECT 
+          cc.id,
+          cc.learner_uid,
+          cc.chapter_id,
+          cc.duration,
+          cc.score,
+          cc.completed_at,
+          cc.created,
+          b.book_id,
+          b.genre,
+          b.sub_genre,
+          b.chapter_number,
+          b.chapter_name,
+          b.reading_level
+        FROM chapter_completion cc
+        JOIN book b ON cc.chapter_id = b.id
+        WHERE cc.learner_uid = ? AND cc.score >= ?
+        ORDER BY cc.completed_at DESC`,
+        [learnerUid, minScore]
+      );
+      resolve(result || []);
+    } catch (error) {
+      console.error('Error fetching user completed chapters with score:', error);
+      reject(error);
+    }
+  });
+};
+
+// Get count of unique books completed by a user
+export const getUserCompletedBooksCount = (learnerUid: string, minScore: number = 80): Promise<number> => {
+  return new Promise((resolve, reject) => {
+    if (!db) {
+      reject(new Error('Database not initialized'));
+      return;
+    }
+
+    try {
+      const result = db.getFirstSync<{ count: number }>(
+        `SELECT COUNT(DISTINCT b.book_id) as count
+         FROM chapter_completion cc
+         JOIN book b ON cc.chapter_id = b.id
+         WHERE cc.learner_uid = ? AND cc.score >= ?`,
+        [learnerUid, minScore]
+      );
+      resolve(result?.count || 0);
+    } catch (error) {
+      console.error('Error fetching user completed books count:', error);
+      reject(error);
+    }
+  });
+};
+
+// Function to check if completed chapters table is empty
+export const isCompletedChaptersTableEmpty = (): Promise<boolean> => {
+  return new Promise((resolve, reject) => {
+    if (!db) {
+      reject(new Error('Database not initialized'));
+      return;
+    }
+
+    try {
+      const result = db.getFirstSync<{ count: number }>(
+        'SELECT COUNT(*) as count FROM chapter_completion'
+      );
+      console.log('Completed chapters table empty:', (result?.count || 0) === 0);
+      resolve((result?.count || 0) === 0);
+    } catch (error) {
+      console.error('Error checking if completed chapters table is empty:', error);
+      reject(error);
+    }
+  });
+};
+
+// Function to restore completed chapters from API
+export const restoreCompletedChapters = async (learnerUid: string): Promise<void> => {
+  console.log('Restoring completed chapters from API for user:', learnerUid);
+  return new Promise(async (resolve, reject) => {
+    if (!db) {
+      reject(new Error('Database not initialized'));
+      return;
+    }
+
+    try {
+      // Import the API function
+      const { fetchCompletedChapters } = require('./api');
+      
+      console.log('Fetching completed chapters from API for user:', learnerUid);
+      const response = await fetchCompletedChapters(learnerUid);
+      
+      if (!response.completedChapters || response.completedChapters.length === 0) {
+        console.log('No completed chapters found in API response');
+        resolve();
+        return;
+      }
+
+      console.log(`Found ${response.completedChapters.length} completed chapters to restore`);
+
+      // Clean up any existing duplicates before restoring
+      await removeDuplicateChapterCompletions(learnerUid);
+
+      // For each completed chapter from API, we need to find the corresponding book in our database
+      for (const apiChapter of response.completedChapters) {
+        try {
+          // Find the book by title and chapter name (using the new chapterName field)
+          let book = db.getFirstSync<{
+            id: number;
+            book_id: string;
+            title: string;
+            chapter_number: number;
+            chapter_name: string;
+          }>(
+            `SELECT id, book_id, title, chapter_number, chapter_name 
+             FROM book 
+             WHERE title = ? AND chapter_name = ?
+             LIMIT 1`,
+            [apiChapter.bookTitle, apiChapter.chapterName]
+          );
+
+          // If exact match not found, try partial title match
+          if (!book) {
+            book = db.getFirstSync<{
+              id: number;
+              book_id: string;
+              title: string;
+              chapter_number: number;
+              chapter_name: string;
+            }>(
+              `SELECT id, book_id, title, chapter_number, chapter_name 
+               FROM book 
+               WHERE title LIKE ? AND chapter_name = ?
+               LIMIT 1`,
+              [`%${apiChapter.bookTitle}%`, apiChapter.chapterName]
+            );
+          }
+
+          if (book) {
+            // Check if this chapter completion already exists for this user
+            const existingCompletion = db.getFirstSync<{ count: number }>(
+              'SELECT COUNT(*) as count FROM chapter_completion WHERE learner_uid = ? AND chapter_id = ?',
+              [learnerUid, book.id]
+            );
+
+            if (existingCompletion && existingCompletion.count === 0) {
+              // Insert the completed chapter with default values only if it doesn't exist
+              db.runSync(
+                'INSERT INTO chapter_completion (learner_uid, chapter_id, duration, score, completed_at) VALUES (?, ?, ?, ?, ?)',
+                [
+                  learnerUid,
+                  book.id,
+                  300, // Default duration: 5 minutes (300 seconds)
+                  85,  // Default score: 85%
+                  apiChapter.completedAt
+                ]
+              );
+              console.log(`Restored chapter: ${book.chapter_name} (${book.title})`);
+            } else {
+              console.log(`Chapter already exists for user, skipping: ${book.chapter_name} (${book.title})`);
+            }
+          } else {
+            console.log(`Book not found in database: ${apiChapter.bookTitle} Chapter ${apiChapter.chapterNumber}`);
+          }
+        } catch (chapterError) {
+          console.error('Error restoring individual chapter:', chapterError);
+          // Continue with other chapters even if one fails
+        }
+      }
+
+      console.log('Completed chapters restoration finished');
+      resolve();
+    } catch (error) {
+      console.error('Error restoring completed chapters:', error);
+      reject(error);
+    }
+  });
+};
+
+// Function to manually trigger restoration (for testing/debugging)
+export const manuallyRestoreCompletedChapters = async (learnerUid: string): Promise<{
+  success: boolean;
+  message: string;
+  restoredCount: number;
+}> => {
+  try {
+    console.log('Manually triggering completed chapters restoration...');
+    
+    // Clear existing completed chapters first
+    await clearAllCompletedChapters();
+    console.log('Cleared existing completed chapters');
+    
+    // Restore from API
+    await restoreCompletedChapters(learnerUid);
+    
+    // Get count of restored chapters
+    const completedChapters = await getAllCompletedChapters();
+    
+    return {
+      success: true,
+      message: `Successfully restored ${completedChapters.length} completed chapters`,
+      restoredCount: completedChapters.length
+    };
+  } catch (error) {
+    console.error('Error in manual restoration:', error);
+    return {
+      success: false,
+      message: `Failed to restore completed chapters: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      restoredCount: 0
+    };
+  }
+};
+
+// Reading level initialization utility
+export const initializeReadingLevel = async (): Promise<void> => {
+  try {
+    const readingLevel = await AsyncStorage.getItem('readingLevel');
+    if (!readingLevel) {
+      await AsyncStorage.setItem('readingLevel', 'Explorer');
+      console.log('Reading level initialized to Explorer');
+    }
+  } catch (error) {
+    console.error('Error initializing reading level:', error);
+  }
+};
+
+// Get current reading level with fallback to Explorer
+export const getCurrentReadingLevel = async (): Promise<string> => {
+  try {
+    const stored = await AsyncStorage.getItem('current_reading_level');
+    return stored || 'Explorer';
+  } catch (error) {
+    console.error('Error getting current reading level:', error);
+    return 'Explorer';
+  }
+};
+
+// Calculate reading streak based on chapter completions
+export const calculateReadingStreak = (learnerUid?: string): Promise<number> => {
+  return new Promise((resolve, reject) => {
+    if (!db) {
+      reject(new Error('Database not initialized'));
+      return;
+    }
+
+    try {
+      // Get all completed chapters with dates, ordered by completion date
+      let query = `
+        SELECT DISTINCT DATE(completed_at) as completion_date
+        FROM chapter_completion
+        WHERE score >= 80
+      `;
+      let params: string[] = [];
+      
+      if (learnerUid) {
+        query += ' AND learner_uid = ?';
+        params.push(learnerUid);
+      }
+      
+      query += ' ORDER BY completion_date DESC';
+      
+      const completionDates = db.getAllSync<{ completion_date: string }>(query, params);
+      
+      if (completionDates.length === 0) {
+        resolve(0);
+        return;
+      }
+
+      // Convert dates to Date objects and sort in descending order
+      const dates = completionDates.map(row => new Date(row.completion_date));
+      dates.sort((a, b) => b.getTime() - a.getTime());
+
+      // Calculate streak
+      let streak = 0;
+      const today = new Date();
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      
+      // Check if there's activity today
+      const hasActivityToday = dates.some(date => 
+        date.getFullYear() === today.getFullYear() &&
+        date.getMonth() === today.getMonth() &&
+        date.getDate() === today.getDate()
+      );
+
+      if (!hasActivityToday) {
+        // No activity today, check if there was activity yesterday
+        const hasActivityYesterday = dates.some(date => 
+          date.getFullYear() === yesterday.getFullYear() &&
+          date.getMonth() === yesterday.getMonth() &&
+          date.getDate() === yesterday.getDate()
+        );
+        
+        if (!hasActivityYesterday) {
+          resolve(0);
+          return;
+        }
+        // Start counting from yesterday
+        streak = 1;
+      } else {
+        // Start counting from today
+        streak = 1;
+      }
+
+      // Count consecutive days
+      let currentDate = hasActivityToday ? today : yesterday;
+      
+      for (let i = 1; i < dates.length; i++) {
+        const expectedDate = new Date(currentDate);
+        expectedDate.setDate(expectedDate.getDate() - 1);
+        
+        const hasActivityOnExpectedDate = dates.some(date => 
+          date.getFullYear() === expectedDate.getFullYear() &&
+          date.getMonth() === expectedDate.getMonth() &&
+          date.getDate() === expectedDate.getDate()
+        );
+        
+        if (hasActivityOnExpectedDate) {
+          streak++;
+          currentDate = expectedDate;
+        } else {
+          break;
+        }
+      }
+
+      resolve(streak);
+    } catch (error) {
+      console.error('Error calculating reading streak:', error);
+      reject(error);
+    }
+  });
+};
+
+// Get reading streak with additional details
+export const getReadingStreakDetails = (learnerUid?: string): Promise<{
+  currentStreak: number;
+  longestStreak: number;
+  totalDaysRead: number;
+  lastActivityDate: string | null;
+}> => {
+  return new Promise((resolve, reject) => {
+    if (!db) {
+      reject(new Error('Database not initialized'));
+      return;
+    }
+
+    try {
+      // Get all completed chapters with dates
+      let query = `
+        SELECT DISTINCT DATE(completed_at) as completion_date
+        FROM chapter_completion
+        WHERE score >= 80
+      `;
+      let params: string[] = [];
+      
+      if (learnerUid) {
+        query += ' AND learner_uid = ?';
+        params.push(learnerUid);
+      }
+      
+      query += ' ORDER BY completion_date DESC';
+      
+      const completionDates = db.getAllSync<{ completion_date: string }>(query, params);
+      
+      if (completionDates.length === 0) {
+        resolve({
+          currentStreak: 0,
+          longestStreak: 0,
+          totalDaysRead: 0,
+          lastActivityDate: null
+        });
+        return;
+      }
+
+      // Convert dates to Date objects and sort in descending order
+      const dates = completionDates.map(row => new Date(row.completion_date));
+      dates.sort((a, b) => b.getTime() - a.getTime());
+
+      const totalDaysRead = dates.length;
+      const lastActivityDate = dates[0].toISOString().split('T')[0];
+
+      // Calculate current streak
+      let currentStreak = 0;
+      const today = new Date();
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      
+      const hasActivityToday = dates.some(date => 
+        date.getFullYear() === today.getFullYear() &&
+        date.getMonth() === today.getMonth() &&
+        date.getDate() === today.getDate()
+      );
+
+      if (!hasActivityToday) {
+        const hasActivityYesterday = dates.some(date => 
+          date.getFullYear() === yesterday.getFullYear() &&
+          date.getMonth() === yesterday.getMonth() &&
+          date.getDate() === yesterday.getDate()
+        );
+        
+        if (!hasActivityYesterday) {
+          currentStreak = 0;
+        } else {
+          currentStreak = 1;
+        }
+      } else {
+        currentStreak = 1;
+      }
+
+      // Calculate current streak length
+      let currentDate = hasActivityToday ? today : yesterday;
+      
+      for (let i = 1; i < dates.length; i++) {
+        const expectedDate = new Date(currentDate);
+        expectedDate.setDate(expectedDate.getDate() - 1);
+        
+        const hasActivityOnExpectedDate = dates.some(date => 
+          date.getFullYear() === expectedDate.getFullYear() &&
+          date.getMonth() === expectedDate.getMonth() &&
+          date.getDate() === expectedDate.getDate()
+        );
+        
+        if (hasActivityOnExpectedDate) {
+          currentStreak++;
+          currentDate = expectedDate;
+        } else {
+          break;
+        }
+      }
+
+      // Calculate longest streak
+      let longestStreak = 0;
+      let tempStreak = 0;
+      
+      for (let i = 0; i < dates.length; i++) {
+        if (i === 0) {
+          tempStreak = 1;
+        } else {
+          const currentDate = dates[i];
+          const previousDate = dates[i - 1];
+          const dayDiff = Math.floor((previousDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24));
+          
+          if (dayDiff === 1) {
+            tempStreak++;
+          } else {
+            longestStreak = Math.max(longestStreak, tempStreak);
+            tempStreak = 1;
+          }
+        }
+      }
+      
+      longestStreak = Math.max(longestStreak, tempStreak);
+
+      resolve({
+        currentStreak,
+        longestStreak,
+        totalDaysRead,
+        lastActivityDate
+      });
+    } catch (error) {
+      console.error('Error getting reading streak details:', error);
+      reject(error);
+    }
+  });
+};
+
+// Function to remove duplicate chapter completions for a user
+export const removeDuplicateChapterCompletions = (learnerUid: string): Promise<void> => {
+  return new Promise((resolve, reject) => {
+    if (!db) {
+      reject(new Error('Database not initialized'));
+      return;
+    }
+
+    try {
+      // Remove duplicates by keeping only the first occurrence of each chapter_id for the user
+      db.runSync(`
+        DELETE FROM chapter_completion 
+        WHERE id NOT IN (
+          SELECT MIN(id) 
+          FROM chapter_completion 
+          WHERE learner_uid = ? 
+          GROUP BY chapter_id
+        ) AND learner_uid = ?
+      `, [learnerUid, learnerUid]);
+      
+      console.log('Duplicate chapter completions removed for user:', learnerUid);
+      resolve();
+    } catch (error) {
+      console.error('Error removing duplicate chapter completions:', error);
       reject(error);
     }
   });

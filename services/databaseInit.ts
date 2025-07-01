@@ -4,20 +4,9 @@ import { initializeSavingsWithSampleData } from './savingsService';
 
 // Sample savings jars data
 const SAMPLE_SAVINGS_JUGS = [
-  { name: 'Emergency Fund' },
-  { name: 'Vacation Fund' },
-  { name: 'New Car Fund' },
-  { name: 'Home Renovation' },
-  { name: 'Gift Fund' }
+  { name: 'Reading Fund', emoji: '💰' }
 ];
 
-// Sample transactions data
-const SAMPLE_TRANSACTIONS = [
-  { jug_name: 'Emergency Fund', transaction_name: 'Monthly contribution', amount: 100 },
-  { jug_name: 'Emergency Fund', transaction_name: 'Monthly contribution', amount: 100 },
-  { jug_name: 'Vacation Fund', transaction_name: 'Bonus deposit', amount: 500 },
-  { jug_name: 'Gift Fund', transaction_name: 'Birthday money', amount: 75 }
-];
 
 // Initialize database and populate with sample data
 export const initializeDatabase = async () => {
@@ -56,6 +45,7 @@ const loadBooksIntoDatabase = async () => {
     for (const book of booksData.books) {
       await insertBook({
         book_id: book.book_id,
+        title: book.title,
         genre: book.genre,
         sub_genre: book.sub_genre,
         chapter_number: book.chapter_number,
@@ -89,25 +79,14 @@ const loadSavingsIntoDatabase = async () => {
     
     // Insert sample savings jars
     for (const jug of SAMPLE_SAVINGS_JUGS) {
-      await insertSavingsJug({ name: jug.name });
+      await insertSavingsJug({ name: jug.name, emoji: jug.emoji });
     }
     
     // Get the inserted jugs to get their IDs
     const insertedJugs = await getAllSavingsJugs();
     
-    // Insert sample transactions
-    for (const transaction of SAMPLE_TRANSACTIONS) {
-      const jug = insertedJugs.find(j => j.name === transaction.jug_name);
-      if (jug) {
-        await insertSavingsTransaction({
-          savings_jug_id: jug.id,
-          transaction_name: transaction.transaction_name,
-          amount: transaction.amount
-        });
-      }
-    }
+
     
-    console.log(`Loaded ${SAMPLE_SAVINGS_JUGS.length} savings jars and ${SAMPLE_TRANSACTIONS.length} transactions into database`);
   } catch (error) {
     console.error('Error loading savings data into database:', error);
     throw error;

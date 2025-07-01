@@ -4,18 +4,24 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { HOST_URL } from '@/config/api';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '@/contexts/AuthContext';
+import { useSound } from '../../contexts/SoundContext';
 import { analytics } from '@/services/analytics';
 import { Ionicons } from '@expo/vector-icons';
-import { getBookByChapterId, insertChapterCompletion, getAllSavingsJugs } from '@/services/database';
+import { getBookByChapterId, insertChapterCompletion, getAllSavingsJugs, hasUserCompletedChapter, initializeReadingLevel, getCurrentReadingLevel, getNextChapterByReadingLevel, getCurrentReading } from '@/services/database';
+import { submitCompletedChapter } from '@/services/api';
 import { addMoneyToJug } from '@/services/savingsService';
+import { updateReading } from '@/services/readingService';
 import ConfettiCannon from 'react-native-confetti-cannon';
 import { Audio } from 'expo-av';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { router } from 'expo-router';
 
 interface BookQuizProps {
     chapterId: number;
     startTime?: number; // Make startTime optional since we're removing reading speed
     onClose?: (shouldRetry?: boolean) => void;
     wordCount?: number; // Add wordCount prop
+    readingSpeed?: number; // Add reading speed in words per minute
     onQuizStart?: () => void; // Callback to notify parent to stop timer
 }
 
@@ -38,6 +44,7 @@ interface SavingsJug {
     balance: number;
     created: string;
     updated: string;
+    emoji?: string;
 }
 
 // Fisher-Yates shuffle
@@ -50,10 +57,56 @@ function shuffleArray<T>(array: T[]): T[] {
     return arr;
 }
 
-export function BookQuiz({ chapterId, startTime, onClose, wordCount, onQuizStart }: BookQuizProps) {
+// Add these constants at the top of the file after the imports
+const JUG_EMOJIS = [
+  '🐷', // piggy bank
+  '💎', // diamond
+  '🎯', // target
+  '🌈', // rainbow
+];
+
+const JUG_GRADIENTS: [string, string][] = [
+  ['#667eea', '#764ba2'], // blue-purple
+  ['#f093fb', '#f5576c'], // pink-orange
+  ['#43e97b', '#38f9d7'], // teal-green
+  ['#fceabb', '#f8b500'], // yellow-orange
+  ['#43cea2', '#185a9d'], // aqua-blue
+  ['#ff5858', '#f09819'], // red-orange
+  ['#c471f5', '#fa71cd'], // lavender-pink
+  ['#30cfd0', '#330867'], // mint-blue
+];
+
+// Reading level constants
+const READING_LEVELS = {
+  EXPLORER: 'Explorer',
+  BUILDER: 'Builder', 
+  CHALLENGER: 'Challenger'
+};
+
+// Helper functions to convert between numeric and text levels
+const getNumericLevel = (textLevel: string): number => {
+  switch (textLevel) {
+    case READING_LEVELS.EXPLORER: return 1;
+    case READING_LEVELS.BUILDER: return 2;
+    case READING_LEVELS.CHALLENGER: return 3;
+    default: return 1;
+  }
+};
+
+const getTextLevel = (numericLevel: number): string => {
+  switch (numericLevel) {
+    case 1: return READING_LEVELS.EXPLORER;
+    case 2: return READING_LEVELS.BUILDER;
+    case 3: return READING_LEVELS.CHALLENGER;
+    default: return READING_LEVELS.EXPLORER;
+  }
+};
+
+export function BookQuiz({ chapterId, startTime, onClose, wordCount, readingSpeed, onQuizStart }: BookQuizProps) {
     const { colors } = useTheme();
     const colorScheme = useColorScheme();
     const { user } = useAuth();
+    const { soundEnabled } = useSound();
     const isDark = colorScheme === 'dark';
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -73,17 +126,39 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, onQuizStart
     const [isAddingMoney, setIsAddingMoney] = useState(false);
     const [hasEarnedMoney, setHasEarnedMoney] = useState(false);
     const [showConfetti, setShowConfetti] = useState(false);
+    const [hasCompletedChapter, setHasCompletedChapter] = useState(false);
+    const [agreedAmount, setAgreedAmount] = useState('5');
+    const [readingLevelPromoted, setReadingLevelPromoted] = useState<number | null>(null);
+    const [readingLevelDemoted, setReadingLevelDemoted] = useState<number | null>(null);
+
+    // Initialize reading level if not set
+    const initializeUserReadingLevel = async () => {
+        try {
+            await initializeReadingLevel();
+        } catch (error) {
+            console.error('Error initializing reading level in book-quiz:', error);
+        }
+    };
 
     useEffect(() => {
         if (chapterId) {
             // Notify parent to stop timer
             if (typeof onQuizStart === 'function') onQuizStart();
 
+            // Log reading speed if available
+            if (readingSpeed) {
+                console.log(`Reading speed passed to quiz: ${readingSpeed} WPM`);
+            }
+
             analytics.track('reading_quiz_started', {
                 userId: user?.uid,
-                chapterId
+                chapterId,
+                readingSpeedWPM: readingSpeed
             });
             fetchQuiz();
+            checkIfUserCompletedChapter();
+            loadAgreedAmount();
+            initializeUserReadingLevel(); // Initialize reading level
         }
     }, [chapterId]);
 
@@ -102,6 +177,18 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, onQuizStart
             if (bookData && bookData.quiz) {
                 // Parse the quiz string into an array of questions
                 const parsedQuiz = JSON.parse(bookData.quiz);
+                
+                // Log the quiz answers for debugging
+                console.log('=== QUIZ ANSWERS ===');
+                parsedQuiz.questions.forEach((question: any, index: number) => {
+                    const correctAnswer = question.correct_answer || question.options[question.correct];
+                    console.log(`Question ${index + 1}: ${question.question}`);
+                    console.log(`Correct Answer: ${correctAnswer}`);
+                    console.log(`All Options: ${question.options.join(', ')}`);
+                    console.log('---');
+                });
+                console.log('=== END QUIZ ANSWERS ===');
+                
                 // Shuffle options for each question
                 const shuffledQuestions = parsedQuiz.questions.map((q: any) => ({
                     ...q,
@@ -131,20 +218,106 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, onQuizStart
     async function completeChapter(percentage: number) {
         if (!user?.uid || !chapterId) return;
 
+        // Check if user has already completed this chapter
+        const alreadyCompleted = await hasUserCompletedChapter(user.uid, chapterId);
+        if (alreadyCompleted) {
+            console.log('User has already completed this chapter, skipping completion record');
+            return;
+        }
+
         setIsCompleting(true);
         try {
+            // Use the readingSpeed prop passed to the component
+            const finalReadingSpeed = readingSpeed || 0;
+            const score = Math.floor(percentage);
+
+            // Get book details for API submission
+            const bookData = await getBookByChapterId(chapterId);
+            if (!bookData) {
+                throw new Error('Book data not found');
+            }
+
+            // Insert into local database
             await insertChapterCompletion({
                 learnerUid: user.uid,
                 chapterId,
-                duration: 0,
-                score: Math.floor(percentage),
+                readingSpeed: finalReadingSpeed,
+                score,
             });
+
+            // Submit to API only if book title is available
+            if (bookData.title) {
+                try {
+                    await submitCompletedChapter({
+                        learnerUid: user.uid,
+                        chapterName: bookData.chapter_name,
+                        bookTitle: bookData.title,
+                        readingSpeed: finalReadingSpeed,
+                        score,
+                    });
+                    console.log('Completed chapter submitted to API successfully');
+                } catch (apiError) {
+                    console.error('Error submitting to API (continuing with local save):', apiError);
+                    // Continue even if API submission fails
+                }
+            } else {
+                console.log('Book title not found, skipping API submission');
+            }
+            
+            // Update reading progress to next chapter if score is 80% or higher
+            if (percentage >= 80) {
+                await updateReadingProgressToNextChapter();
+            }
         } catch (error) {
             console.error('Error completing chapter:', error);
         } finally {
             setIsCompleting(false);
         }
     }
+
+    // Function to update reading progress to the next chapter
+    const updateReadingProgressToNextChapter = async () => {
+        try {
+            console.log('[updateReadingProgressToNextChapter] Starting to update reading progress...');
+            
+            // Get current reading status
+            const currentReading = await getCurrentReading();
+            if (!currentReading) {
+                console.log('[updateReadingProgressToNextChapter] No current reading found');
+                return;
+            }
+            
+            console.log(`[updateReadingProgressToNextChapter] Current reading: ${currentReading.book_id}, chapter ${currentReading.chapter_number}`);
+            
+            // Get user's reading level
+            const userReadingLevel = await getCurrentReadingLevel();
+            console.log(`[updateReadingProgressToNextChapter] User reading level: ${userReadingLevel}`);
+            
+            // Get the next chapter at user's reading level
+            const nextChapter = await getNextChapterByReadingLevel(
+                currentReading.book_id, 
+                currentReading.chapter_number, 
+                userReadingLevel
+            );
+            
+            if (nextChapter) {
+                console.log(`[updateReadingProgressToNextChapter] Found next chapter: ${nextChapter.chapter_name} (${nextChapter.chapter_number})`);
+                
+                // Update reading progress to next chapter
+                await updateReading({
+                    book_id: nextChapter.book_id,
+                    chapter_number: nextChapter.chapter_number,
+                    chapter_name: nextChapter.chapter_name
+                });
+                
+                console.log(`[updateReadingProgressToNextChapter] Successfully updated reading progress to chapter ${nextChapter.chapter_number}`);
+            } else {
+                console.log('[updateReadingProgressToNextChapter] No next chapter found, keeping current chapter');
+            }
+        } catch (error) {
+            console.error('[updateReadingProgressToNextChapter] Error updating reading progress:', error);
+        }
+    };
 
     // Load savings jars for jar selection
     const loadSavingsJugs = async () => {
@@ -156,25 +329,115 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, onQuizStart
         }
     };
 
+    // Load agreed amount from AsyncStorage
+    const loadAgreedAmount = async () => {
+        try {
+            const storedAmount = await AsyncStorage.getItem('learnerAgreedAmount');
+            if (storedAmount) {
+                setAgreedAmount(storedAmount);
+            }
+        } catch (error) {
+            console.error('Error loading agreed amount:', error);
+        }
+    };
+
+    // Check and promote reading level if conditions are met
+    const checkAndPromoteReadingLevel = async (percentage: number) => {
+        try {
+            // Only promote if reading speed > 100 WPM and comprehension is 100%
+            if (readingSpeed && readingSpeed > 100 && percentage === 100) {
+                const currentLevelText = await getCurrentReadingLevel();
+                const currentLevelNum = getNumericLevel(currentLevelText);
+                
+                // Only promote if not already at max level (Challenger)
+                if (currentLevelNum < 3) {
+                    const newLevelNum = currentLevelNum + 1;
+                    const newLevelText = getTextLevel(newLevelNum);
+                    await AsyncStorage.setItem('readingLevel', newLevelText);
+                    
+                    // Set promotion state for UI display
+                    setReadingLevelPromoted(newLevelNum);
+                    
+                    // Track reading level promotion
+                    analytics.track('reading_level_promoted', {
+                        userId: user?.uid,
+                        chapterId,
+                        previousLevel: currentLevelText,
+                        newLevel: newLevelText,
+                        readingSpeedWPM: readingSpeed,
+                        comprehensionPercentage: percentage,
+                        trigger: 'speed_and_comprehension'
+                    });
+                    
+                    console.log(`🎉 Reading level promoted from ${currentLevelText} to ${newLevelText}!`);
+                    return newLevelNum;
+                }
+            }
+            return null;
+        } catch (error) {
+            console.error('Error checking/promoting reading level:', error);
+            return null;
+        }
+    };
+
+    // Check and demote reading level if conditions are met
+    const checkAndDemoteReadingLevel = async (percentage: number) => {
+        try {
+            // Only demote if reading speed < 100 WPM and comprehension < 80%
+            if (readingSpeed && readingSpeed < 100 && percentage < 80) {
+                const currentLevelText = await getCurrentReadingLevel();
+                const currentLevelNum = getNumericLevel(currentLevelText);
+                
+                // Only demote if not already at min level (Explorer)
+                if (currentLevelNum > 1) {
+                    const newLevelNum = currentLevelNum - 1;
+                    const newLevelText = getTextLevel(newLevelNum);
+                    await AsyncStorage.setItem('readingLevel', newLevelText);
+                    setReadingLevelDemoted(newLevelNum);
+                    
+                    analytics.track('reading_level_demoted', {
+                        userId: user?.uid,
+                        chapterId,
+                        previousLevel: currentLevelText,
+                        newLevel: newLevelText,
+                        readingSpeedWPM: readingSpeed,
+                        comprehensionPercentage: percentage,
+                        trigger: 'speed_and_comprehension'
+                    });
+                    console.log(`⬇️ Reading level demoted from ${currentLevelText} to ${newLevelText}!`);
+                    return newLevelNum;
+                }
+            }
+            return null;
+        } catch (error) {
+            console.error('Error checking/demoting reading level:', error);
+            return null;
+        }
+    };
+
     // Add money to selected jug
     const handleAddMoneyToJug = async () => {
         if (!selectedJugId) return;
 
         setIsAddingMoney(true);
         try {
-            await addMoneyToJug(selectedJugId, 5, `Quiz reward - ${quiz?.chapterName || 'Chapter quiz'}`);
-            // Play money sound
-            const { sound } = await Audio.Sound.createAsync(
-                require('../../../assets/audio/money.mp3')
-            );
-            await sound.playAsync();
+            const amount = parseFloat(agreedAmount);
+            await addMoneyToJug(selectedJugId, amount, `Quiz reward - ${quiz?.chapterName || 'Chapter quiz'}`);
+            // Play money sound only if sound is enabled
+            if (soundEnabled) {
+                const { sound } = await Audio.Sound.createAsync(
+                    require('../../../assets/audio/money.mp3')
+                );
+                await sound.playAsync();
+            }
             setShowJarSelection(false);
             setSelectedJugId(null);
             setHasEarnedMoney(true);
             setShowConfetti(true);
             setTimeout(() => {
                 setShowConfetti(false);
-                onClose?.(false);
+                // Redirect to home page instead of just closing the quiz
+                router.replace('/');
             }, 2200); // Confetti duration + buffer
         } catch (error) {
             console.error('Error adding money to jug:', error);
@@ -205,19 +468,21 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, onQuizStart
         // Play correct/wrong sound
         (async () => {
             try {
-                const { sound } = await Audio.Sound.createAsync(
-                    isCorrect
-                        ? require('../../../assets/audio/correct.mp3')
-                        : require('../../../assets/audio/wrong.mp3')
-                );
-                await sound.playAsync();
+                if (soundEnabled) {
+                    const { sound } = await Audio.Sound.createAsync(
+                        isCorrect
+                            ? require('../../../assets/audio/correct.mp3')
+                            : require('../../../assets/audio/wrong.mp3')
+                    );
+                    await sound.playAsync();
+                }
             } catch (e) {
                 console.warn('Failed to play answer sound', e);
             }
         })();
     }
 
-    function handleNext() {
+    async function handleNext() {
         if (!quiz?.quiz) return;
 
         if (currentQuestionIndex < quiz.quiz.length - 1) {
@@ -226,14 +491,33 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, onQuizStart
         } else {
             const percentage = (score / quiz.quiz.length) * 100;
             
+            // Only promote/demote reading level on first attempt
+            let promotedLevel = null;
+            let demotedLevel = null;
+            if (!hasCompletedChapter) {
+                // Try promotion first, then demotion if not promoted
+                promotedLevel = await checkAndPromoteReadingLevel(percentage);
+                if (!promotedLevel) {
+                    demotedLevel = await checkAndDemoteReadingLevel(percentage);
+                } else {
+                    setReadingLevelDemoted(null);
+                }
+            } else {
+                setReadingLevelPromoted(null);
+                setReadingLevelDemoted(null);
+            }
             
-            // Check if user earned money (80% or higher)
-            if (percentage >= 80) {
+            // Check if user earned money (80% or higher) AND hasn't completed this chapter before
+            if (percentage >= 80 && !hasCompletedChapter) {
                 completeChapter(percentage);
                 setHasEarnedMoney(true);
                 loadSavingsJugs();
                 setShowJarSelection(true);
             } else {
+                // If they haven't completed before, complete the chapter now
+                if (!hasCompletedChapter) {
+                    completeChapter(percentage);
+                }
                 setShowResults(true);
             }
 
@@ -251,10 +535,25 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, onQuizStart
                         percentage >= 60 ? 'average' : 'needs_improvement',
                 correctAnswers: score,
                 incorrectAnswers: quiz.quiz.length - score,
-                timePerQuestion: Math.floor((Date.now() - quizStartTime) / 1000 / quiz.quiz.length)
+                timePerQuestion: Math.floor((Date.now() - quizStartTime) / 1000 / quiz.quiz.length),
+                readingSpeedWPM: readingSpeed,
+                readingLevelPromoted: promotedLevel,
+                readingLevelDemoted: demotedLevel
             });
         }
     }
+
+    // Check if user has already completed this chapter
+    const checkIfUserCompletedChapter = async () => {
+        if (!user?.uid || !chapterId) return;
+        
+        try {
+            const completed = await hasUserCompletedChapter(user.uid, chapterId);
+            setHasCompletedChapter(completed);
+        } catch (error) {
+            console.error('Error checking if user completed chapter:', error);
+        }
+    };
 
     if (isLoading) {
         return (
@@ -410,7 +709,72 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, onQuizStart
                             fontWeight: '600', 
                             textAlign: 'center' 
                         }}>
-                            💰 You earned $5! You can add it to your savings jars later.
+                            💰 You earned {agreedAmount}! You can add it to your savings jars later.
+                        </Text>
+                    </View>
+                )}
+                
+                {/* Show reading level promotion message if applicable */}
+                {readingLevelPromoted && (
+                    <View style={{ 
+                        backgroundColor: isDark ? 'rgba(59,130,246,0.1)' : 'rgba(59,130,246,0.1)', 
+                        padding: 12, 
+                        borderRadius: 8, 
+                        marginBottom: 12,
+                        borderWidth: 1,
+                        borderColor: isDark ? 'rgba(59,130,246,0.3)' : 'rgba(59,130,246,0.3)'
+                    }}>
+                        <Text style={{ 
+                            color: isDark ? '#60A5FA' : '#2563EB', 
+                            fontSize: 14, 
+                            fontWeight: '600', 
+                            textAlign: 'center' 
+                        }}>
+                            🚀 Amazing! You've been promoted to {getTextLevel(readingLevelPromoted)} level! 
+                            Your reading speed and comprehension are outstanding!
+                        </Text>
+                    </View>
+                )}
+                
+                {/* Show reading level demotion message if applicable */}
+                {readingLevelDemoted && (
+                    <View style={{ 
+                        backgroundColor: isDark ? 'rgba(239,68,68,0.08)' : 'rgba(239,68,68,0.08)', 
+                        padding: 12, 
+                        borderRadius: 8, 
+                        marginBottom: 12,
+                        borderWidth: 1,
+                        borderColor: isDark ? 'rgba(239,68,68,0.3)' : 'rgba(239,68,68,0.3)'
+                    }}>
+                        <Text style={{ 
+                            color: isDark ? '#F87171' : '#DC2626', 
+                            fontSize: 14, 
+                            fontWeight: '600', 
+                            textAlign: 'center' 
+                        }}>
+                            ⬇️ Your reading level has been adjusted to {getTextLevel(readingLevelDemoted)} level. 
+                            Keep practicing to improve your speed and comprehension!
+                        </Text>
+                    </View>
+                )}
+                
+                {/* Show message if user has already completed this chapter before */}
+                {hasCompletedChapter && percentage >= 80 && (
+                    <View style={{ 
+                        backgroundColor: isDark ? 'rgba(156,163,175,0.1)' : 'rgba(156,163,175,0.1)', 
+                        padding: 12, 
+                        borderRadius: 8, 
+                        marginBottom: 12,
+                        borderWidth: 1,
+                        borderColor: isDark ? 'rgba(156,163,175,0.3)' : 'rgba(156,163,175,0.3)'
+                    }}>
+                        <Text style={{ 
+                            color: isDark ? '#9CA3AF' : '#6B7280', 
+                            fontSize: 14, 
+                            fontWeight: '600', 
+                            textAlign: 'center' 
+                        }}>
+                            📚 You've already completed this chapter before. Great job reviewing!
                         </Text>
                     </View>
                 )}
@@ -435,6 +799,8 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, onQuizStart
                             setScore(0);
                             setShowFeedback(false);
                             setHasEarnedMoney(false);
+                            setReadingLevelPromoted(null);
+                            setReadingLevelDemoted(null);
                             // Close quiz and return to reading
                             onClose?.(true);
                         } else {
@@ -463,112 +829,149 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, onQuizStart
         return (
             <Modal visible={showJarSelection} transparent animationType="fade">
                 <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0, 0, 0, 0.35)' }]}>
-                    <View style={[styles.modalContent, { backgroundColor: cardBg, borderRadius: 28, padding: 28, width: '92%', maxWidth: 420 }]}>
+                    <View style={[styles.modalContent, { backgroundColor: cardBg, borderRadius: 28, padding: 0, width: '92%', maxWidth: 420 }]}>
                         <LinearGradient
                             colors={gradientColors}
                             style={[styles.gradientBackground, { borderRadius: 20 }]}
                         />
-                        
-                        {/* Success Message */}
-                        <View style={{ alignItems: 'center', marginBottom: 24 }}>
-                            <Text style={{ fontSize: 64, marginBottom: 16 }}>💰</Text>
-                            <Text style={[styles.quizTitle, { color: colors.primary, marginBottom: 8, fontSize: 24, textAlign: 'center' }]}>
-                                Congratulations! You earned $5!
-                            </Text>
-                            <Text style={[styles.resultMessage, { color: colors.textSecondary, marginBottom: 16, fontSize: 16, textAlign: 'center' }]}>
-                                You scored {percentage.toFixed(0)}% on the quiz! Choose a savings jar to add your reward.
-                            </Text>
-                        </View>
-
-                        {/* Jar Selection */}
-                        <View style={[styles.jarList, { marginBottom: 24 }]}>
-                            <Text style={[styles.questionText, { color: colors.text, marginBottom: 16, fontSize: 18, textAlign: 'center' }]}>
-                                Select a savings jar:
-                            </Text>
-                            
-                            {savingsJugs.length === 0 ? (
-                                <View style={{ alignItems: 'center', padding: 20 }}>
-                                    <ActivityIndicator size="large" color={colors.primary} />
-                                    <Text style={{ color: colors.textSecondary, marginTop: 12 }}>Loading savings jars...</Text>
-                                </View>
-                            ) : (
-                                <ScrollView style={{ maxHeight: 200 }}>
-                                    {savingsJugs.map((jug) => (
-                                        <Pressable
-                                            key={jug.id}
-                                            style={[
-                                                styles.jarButton,
-                                                {
-                                                    backgroundColor: selectedJugId === jug.id ? '#ede9fe' : '#F3F4F6',
-                                                    borderColor: selectedJugId === jug.id ? '#7C3AED' : '#E5E7EB',
-                                                    borderWidth: 2,
-                                                    marginBottom: 10,
-                                                }
-                                            ]}
-                                            onPress={() => setSelectedJugId(jug.id)}
-                                        >
-                                            <Text style={[
-                                                styles.jarButtonText,
-                                                { color: selectedJugId === jug.id ? '#7C3AED' : '#374151' }
-                                            ]}>
-                                                {jug.name} - ${jug.balance.toFixed(2)}
-                                            </Text>
-                                        </Pressable>
-                                    ))}
-                                </ScrollView>
-                            )}
-                        </View>
-
-                        {/* Action Buttons */}
-                        <View style={[styles.modalButtonRow, { width: '100%', marginTop: 8 }]}>
-                            <Pressable
-                                style={[
-                                    styles.modalButton,
-                                    { 
-                                        backgroundColor: '#E5E7EB',
-                                        flex: 1
-                                    }
-                                ]}
-                                onPress={() => {
-                                    setShowJarSelection(false);
-                                    setSelectedJugId(null);
-                                    setShowResults(true);
-                                }}
-                            >
-                                <Text style={[styles.modalButtonText, { color: colors.text }]}>
-                                    Skip
+                        <ScrollView contentContainerStyle={{ padding: 28 }} showsVerticalScrollIndicator={false}>
+                            {/* Success Message */}
+                            <View style={{ alignItems: 'center', marginBottom: 24 }}>
+                                <Text style={{ fontSize: 64, marginBottom: 16 }}>💰</Text>
+                                <Text style={[styles.quizTitle, { color: colors.primary, marginBottom: 8, fontSize: 24, textAlign: 'center' }]}>
+                                    Congratulations! You earned {agreedAmount} coins!
                                 </Text>
-                            </Pressable>
-                            
-                            <Pressable
-                                style={[
-                                    styles.modalButton,
-                                    { 
-                                        backgroundColor: selectedJugId ? '#7C3AED' : '#9CA3AF',
-                                        flex: 1
-                                    }
-                                ]}
-                                onPress={handleAddMoneyToJug}
-                                disabled={!selectedJugId || isAddingMoney}
-                            >
-                                {isAddingMoney ? (
-                                    <ActivityIndicator color="#fff" />
-                                ) : (
-                                    <Text style={[styles.modalButtonText, { color: colors.text }]}>
-                                        Add $5
+                                <Text style={[styles.resultMessage, { color: colors.textSecondary, marginBottom: 16, fontSize: 16, textAlign: 'center' }]}>
+                                    You scored {percentage.toFixed(0)}% on the quiz! Choose a savings jar to add your reward.
+                                </Text>
+                            </View>
+
+                            {/* Show reading level promotion message if applicable */}
+                            {readingLevelPromoted && (
+                                <View style={{ 
+                                    backgroundColor: isDark ? 'rgba(59,130,246,0.1)' : 'rgba(59,130,246,0.1)', 
+                                    padding: 12, 
+                                    borderRadius: 8, 
+                                    marginBottom: 24,
+                                    borderWidth: 1,
+                                    borderColor: isDark ? 'rgba(59,130,246,0.3)' : 'rgba(59,130,246,0.3)'
+                                }}>
+                                    <Text style={{ 
+                                        color: isDark ? '#60A5FA' : '#2563EB', 
+                                        fontSize: 14, 
+                                        fontWeight: '600', 
+                                        textAlign: 'center' 
+                                    }}>
+                                        🚀 Amazing! You've been promoted to {getTextLevel(readingLevelPromoted)} level! 
+                                        Your reading speed and comprehension are outstanding!
                                     </Text>
+                                </View>
+                            )}
+
+                            {/* Show reading level demotion message if applicable */}
+                            {readingLevelDemoted && (
+                                <View style={{ 
+                                    backgroundColor: isDark ? 'rgba(239,68,68,0.08)' : 'rgba(239,68,68,0.08)', 
+                                    padding: 12, 
+                                    borderRadius: 8, 
+                                    marginBottom: 12,
+                                    borderWidth: 1,
+                                    borderColor: isDark ? 'rgba(239,68,68,0.3)' : 'rgba(239,68,68,0.3)'
+                                }}>
+                                    <Text style={{ 
+                                        color: isDark ? '#F87171' : '#DC2626', 
+                                        fontSize: 14, 
+                                        fontWeight: '600', 
+                                        textAlign: 'center' 
+                                    }}>
+                                        ⬇️ Your reading level has been adjusted to {getTextLevel(readingLevelDemoted)} level. 
+                                        Keep practicing to improve your speed and comprehension!
+                                    </Text>
+                                </View>
+                            )}
+
+                            {/* Jar Selection */}
+                            <View style={[styles.jarList, { marginBottom: 24 }]}> 
+                                <Text style={[styles.questionText, { color: colors.text, marginBottom: 16, fontSize: 18, textAlign: 'center' }]}> 
+                                    Select a savings jar:
+                                </Text>
+                                
+                                {savingsJugs.length === 0 ? (
+                                    <View style={{ alignItems: 'center', padding: 20 }}>
+                                        <ActivityIndicator size="large" color={colors.primary} />
+                                        <Text style={{ color: colors.textSecondary, marginTop: 12 }}>Loading savings jars...</Text>
+                                    </View>
+                                ) : (
+                                    <View style={styles.jarsGrid}>
+                                        {savingsJugs.map((jug, idx) => (
+                                            <LinearGradient
+                                                key={jug.id}
+                                                colors={JUG_GRADIENTS[idx % JUG_GRADIENTS.length]}
+                                                start={{ x: 0, y: 0 }}
+                                                end={{ x: 1, y: 0 }}
+                                                style={[
+                                                    styles.jarGridCard,
+                                                    selectedJugId === jug.id && styles.jarGridCardSelected
+                                                ]}
+                                            >
+                                                <Pressable
+                                                    style={({ pressed }) => [
+                                                        styles.jarGridPressable,
+                                                        pressed && styles.jarGridPressed
+                                                    ]}
+                                                    onPress={() => setSelectedJugId(jug.id)}
+                                                >
+                                                    <View style={styles.jarGridHeader}>
+                                                        <Text style={[styles.jarEmoji, { color: '#fff' }]}> 
+                                                            {jug.emoji || JUG_EMOJIS[idx % JUG_EMOJIS.length]}
+                                                        </Text>
+                                                    </View>
+                                                    <Text style={[styles.jarGridName, { color: '#fff' }]}>{jug.name}</Text>
+                                                    <Text style={[styles.jarGridBalance, { color: '#fff' }]}> 
+                                                        {jug.balance.toLocaleString('en-US', {
+                                                            minimumFractionDigits: 2,
+                                                            maximumFractionDigits: 2
+                                                        })}
+                                                    </Text>
+                                                </Pressable>
+                                            </LinearGradient>
+                                        ))}
+                                    </View>
                                 )}
-                            </Pressable>
-                        </View>
-                        {showConfetti && (
-                            <ConfettiCannon
-                                count={90}
-                                origin={{ x: 200, y: 0 }}
-                                fadeOut
-                                explosionSpeed={350}
-                                fallSpeed={3000}
-                            />
-                        )}
+                            </View>
+
+                            {/* Action Buttons */}
+                            <View style={[styles.modalButtonRow, { width: '100%', marginTop: 8 }]}> 
+                                <Pressable
+                                    style={[
+                                        styles.modalButton,
+                                        { 
+                                            backgroundColor: selectedJugId ? '#7C3AED' : '#9CA3AF',
+                                            width: '100%'
+                                        }
+                                    ]}
+                                    onPress={handleAddMoneyToJug}
+                                    disabled={!selectedJugId || isAddingMoney}
+                                >
+                                    {isAddingMoney ? (
+                                        <ActivityIndicator color="#fff" />
+                                    ) : (
+                                        <Text style={[styles.modalButtonText, { color: '#fff' }]}> 
+                                            Add {agreedAmount}
+                                        </Text>
+                                    )}
+                                </Pressable>
+                            </View>
+                            {showConfetti && (
+                                <ConfettiCannon
+                                    count={90}
+                                    origin={{ x: 200, y: 0 }}
+                                    fadeOut
+                                    explosionSpeed={350}
+                                    fallSpeed={3000}
+                                />
+                            )}
+                        </ScrollView>
                     </View>
                 </View>
             </Modal>
@@ -600,6 +1003,16 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, onQuizStart
             <Text style={[styles.progressText, { color: isDark ? '#A1A1AA' : '#6B7280' }]}>
                 Question {currentQuestionIndex + 1} of {quiz.quiz.length}
             </Text>
+            
+            {/* Reading Speed Display */}
+            {readingSpeed && readingSpeed <= 200 && (
+                <View style={[styles.readingSpeedContainer, { backgroundColor: isDark ? 'rgba(124,58,237,0.1)' : 'rgba(124,58,237,0.05)' }]}>
+                    <Text style={[styles.readingSpeedText, { color: isDark ? '#A78BFA' : '#7C3AED' }]}>
+                        📖 Reading Speed: {readingSpeed} WPM
+                    </Text>
+                </View>
+            )}
+            
             <View style={styles.questionBlock}>
                 <Text style={[styles.questionText, { color: isDark ? '#F3F4F6' : colors.text }]}>{currentQuestion.question}</Text>
                 {currentQuestion.options.map((opt, index) => (
@@ -886,33 +1299,77 @@ const styles = StyleSheet.create({
         width: '100%',
         marginBottom: 24,
     },
-    jarButton: {
-        borderRadius: 14,
-        paddingVertical: 16,
-        paddingHorizontal: 20,
-        marginBottom: 10,
-        borderWidth: 2,
-        backgroundColor: '#F3F4F6',
-        borderColor: '#E5E7EB',
-        width: '100%',
-        alignItems: 'flex-start',
+    jarsGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        justifyContent: 'space-between',
+        marginHorizontal: 8,
+        marginBottom: 24,
     },
-    jarButtonSelected: {
-        backgroundColor: '#ede9fe', // light purple
-        borderColor: '#7C3AED',
-        shadowColor: '#7C3AED',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.12,
+    jarGridCard: {
+        width: '48%',
+        borderRadius: 20,
+        paddingVertical: 18,
+        paddingHorizontal: 10,
+        alignItems: 'center',
+        justifyContent: 'center',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.10,
+        shadowRadius: 12,
+        elevation: 4,
+        minHeight: 120,
+        position: 'relative',
+        backgroundColor: '#fff',
+        borderWidth: 0,
+        marginBottom: 16,
+    },
+    jarGridCardSelected: {
+        borderWidth: 3,
+        borderColor: '#fff',
+        shadowColor: '#fff',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.8,
         shadowRadius: 8,
+        elevation: 8,
     },
-    jarButtonText: {
-        fontSize: 16,
-        fontWeight: '600',
-        color: '#374151',
+    jarGridPressable: {
+        width: '100%',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 22,
+        paddingVertical: 2,
     },
-    jarButtonTextSelected: {
-        color: '#7C3AED',
+    jarGridPressed: {
+        opacity: 0.7,
+        transform: [{ scale: 0.97 }],
+    },
+    jarGridHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        width: '100%',
+        justifyContent: 'center',
+        marginBottom: 2,
+    },
+    jarEmoji: {
+        fontSize: 36,
+        paddingTop: 14,
+        textAlign: 'center',
+    },
+    jarGridName: {
+        fontSize: 18,
         fontWeight: '700',
+        color: '#222',
+        marginTop: 6,
+        marginBottom: 2,
+        textAlign: 'center',
+    },
+    jarGridBalance: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: '#3B27C1',
+        marginTop: 2,
+        textAlign: 'center',
     },
     modalButtonRow: {
         flexDirection: 'row',
@@ -937,5 +1394,14 @@ const styles = StyleSheet.create({
     },
     modalButtonTextPrimary: {
         color: '#fff',
+    },
+    readingSpeedContainer: {
+        padding: 8,
+        borderRadius: 8,
+        marginBottom: 24,
+    },
+    readingSpeedText: {
+        fontSize: 16,
+        fontWeight: '500',
     },
 }); 

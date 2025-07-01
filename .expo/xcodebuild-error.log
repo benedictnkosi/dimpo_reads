@@ -1,3 +1,9 @@
 --- xcodebuild: WARNING: Using the first of multiple matching destinations:
 { platform:iOS Simulator, arch:arm64, id:0CFE2855-E517-4B03-9CA2-CEC166DC5142, OS:18.5, name:iPhone 16 Pro }
 { platform:iOS Simulator, arch:x86_64, id:0CFE2855-E517-4B03-9CA2-CEC166DC5142, OS:18.5, name:iPhone 16 Pro }
+** BUILD FAILED **
+
+
+The following build commands failed:
+	Building project DimpoReads with scheme DimpoReads and configuration Debug
+(1 failure)

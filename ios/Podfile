@@ -11,12 +11,12 @@ platform :ios, podfile_properties['ios.deploymentTarget'] || '15.1'
 install! 'cocoapods',
   :deterministic_uuids => false
 
-prepare_react_native_project!
+prepare_react_native_project! 
 
 use_modular_headers!
 use_frameworks! :linkage => :static
 
-target 'DimpoAccounting' do
+target 'DimpoReads' do
   use_expo_modules!
 
   if ENV['EXPO_USE_COMMUNITY_AUTOLINKING'] == '1'
