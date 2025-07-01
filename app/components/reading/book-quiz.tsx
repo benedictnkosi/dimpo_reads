@@ -221,7 +221,7 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, readingDura
         }
     }
 
-    async function completeChapter(percentage: number) {
+    async function completeChapter(percentage: number, readingDuration: number) {
         if (!user?.uid || !chapterId) return;
 
         // Check if user has already completed this chapter
@@ -242,11 +242,11 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, readingDura
                 throw new Error('Book data not found');
             }
 
-            // Insert into local database
+            // Insert into local database (readingSpeed is actually duration in DB)
             await insertChapterCompletion({
                 learnerUid: user.uid,
                 chapterId,
-                readingSpeed: finalReadingSpeed,
+                readingSpeed: readingDuration || 0,
                 score,
             });
 
@@ -257,7 +257,7 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, readingDura
                         learnerUid: user.uid,
                         chapterName: bookData.chapter_name,
                         bookTitle: bookData.title,
-                        readingSpeed: finalReadingSpeed,
+                        readingSpeed: readingDuration || 0,
                         score,
                     });
                 } catch (apiError) {
@@ -412,7 +412,7 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, readingDura
         setIsAddingMoney(true);
         try {
             const amount = parseFloat(agreedAmount);
-            await addMoneyToJug(selectedJugId, amount, `Quiz reward - ${quiz?.chapterName || 'Chapter quiz'}`);
+            await addMoneyToJug(selectedJugId, amount, quiz?.chapterName || 'Chapter quiz');
             // Play money sound only if sound is enabled
             if (soundEnabled) {
                 const { sound } = await Audio.Sound.createAsync(
@@ -503,14 +503,14 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, readingDura
             
             // Check if user earned money (80% or higher) AND hasn't completed this chapter before
             if (percentage >= 80 && !hasCompletedChapter) {
-                completeChapter(percentage);
+                completeChapter(percentage, readingDuration || 0);
                 setHasEarnedMoney(true);
                 loadSavingsJugs();
                 setShowJarSelection(true);
             } else {
                 // If they haven't completed before, complete the chapter now
                 if (!hasCompletedChapter) {
-                    completeChapter(percentage);
+                    completeChapter(percentage, readingDuration || 0);
                 }
                 setShowResults(true);
             }
@@ -925,7 +925,7 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, readingDura
                             {/* Jar Selection */}
                             <View style={[styles.jarList, { marginBottom: 24 }]}> 
                                 <Text style={[styles.questionText, { color: colors.text, marginBottom: 16, fontSize: 18, textAlign: 'center' }]}> 
-                                    Select a savings jar:
+                                    Select a savings goal:
                                 </Text>
                                 
                                 {savingsJugs.length === 0 ? (
@@ -989,7 +989,7 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, readingDura
                                         <ActivityIndicator color="#fff" />
                                     ) : (
                                         <Text style={[styles.modalButtonText, { color: '#fff' }]}> 
-                                            Add {agreedAmount}
+                                            Add {agreedAmount} coins
                                         </Text>
                                     )}
                                 </Pressable>

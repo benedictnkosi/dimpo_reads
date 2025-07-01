@@ -308,11 +308,11 @@ export default function ReadingScreen() {
           </Pressable>
         </View>
       ) : currentBook ? (
-        <View style={styles.contentContainer}>
+        <View style={[styles.contentContainer, {flex: 1, paddingBottom: 0}]}>
           
 
           {/* Book Content */}
-          <View style={styles.bookContentContainer}>
+          <View style={[styles.bookContentContainer, {flex: 1, marginBottom: 0, paddingVertical: 0}]}>
             <ChapterContent 
               bookName={currentBook.title || ''}
               chapterName={currentBook.chapter_name}

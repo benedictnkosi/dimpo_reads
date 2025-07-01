@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
-import { View, StyleSheet, Text, Pressable, Modal, ActivityIndicator, FlatList } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, StyleSheet, Text, Pressable, Modal, ActivityIndicator, FlatList, Image } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../../contexts/ThemeContext';
-import { getUserCompletedChaptersWithScore } from '@/services/database';
+import { getUserCompletedChaptersWithScore, getBookByBookIdAndChapterNumber, getBookByChapterId, getBookStatistics } from '@/services/database';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface QuickReportProps {
@@ -25,6 +25,32 @@ interface QuickReportProps {
 
 type Period = 'lifetime' | 'week' | 'month';
 
+// Add a type for completed book
+interface CompletedBook {
+  book_id: string;
+  title: string;
+  image: string | null;
+  completed_at: string;
+}
+
+// Add a type for book info from getBookByChapterId
+interface BookInfo {
+  id: number;
+  book_id: string;
+  title: string | null;
+  genre: string;
+  sub_genre: string;
+  chapter_number: number;
+  chapter_name: string;
+  content: string;
+  quiz: string | null;
+  images: string | null;
+  word_count: number;
+  reading_level: string;
+  created: string;
+  updated: string;
+}
+
 export const QuickReport: React.FC<QuickReportProps> = ({ 
   lifetimeData, 
   weekData, 
@@ -37,6 +63,9 @@ export const QuickReport: React.FC<QuickReportProps> = ({
   const [booksData, setBooksData] = useState<any[]>([]);
   const [loadingBooks, setLoadingBooks] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [bookTitles, setBookTitles] = useState<{ [key: string]: string }>({});
+  const [completedBooks, setCompletedBooks] = useState<CompletedBook[]>([]);
+  const [totalBooks, setTotalBooks] = useState<number | null>(null);
 
   const getDataForPeriod = (period: Period) => {
     switch (period) {
@@ -99,11 +128,85 @@ export const QuickReport: React.FC<QuickReportProps> = ({
     }
   };
 
+  useEffect(() => {
+    const fetchTitles = async () => {
+      if (!booksData || booksData.length === 0) return;
+      const titles: { [key: string]: string } = {};
+      for (const item of booksData) {
+        try {
+          const book = await getBookByBookIdAndChapterNumber(item.book_id, item.chapter_number);
+          const title = book && book.title ? book.title : item.book_id;
+          titles[`${item.book_id}-${item.chapter_number}`] = title;
+          console.log('Book item:', item, 'Fetched title:', title);
+        } catch (e) {
+          titles[`${item.book_id}-${item.chapter_number}`] = item.book_id;
+          console.log('Book item:', item, 'Fetched title: ERROR');
+        }
+      }
+      setBookTitles(titles);
+    };
+    fetchTitles();
+  }, [booksData]);
+
+  useEffect(() => {
+    const processCompletedBooks = async () => {
+      if (!booksData || booksData.length === 0) return;
+      // Group by book_id
+      const booksMap: { [bookId: string]: any } = {};
+      for (const item of booksData) {
+        if (!booksMap[item.book_id]) {
+          booksMap[item.book_id] = { chapters: [], book_id: item.book_id };
+        }
+        booksMap[item.book_id].chapters.push(item);
+      }
+      const completedBooksArr = [];
+      for (const bookId in booksMap) {
+        const chapters = booksMap[bookId].chapters;
+        // Find chapter 1 and chapter 5
+        const chapter1 = chapters.find((ch: any) => ch.chapter_number === 1);
+        const chapter5 = chapters.find((ch: any) => ch.chapter_number === 5);
+        if (chapter1 && chapter5) {
+          // Fetch book title and image for chapter 1
+          const bookInfo = await getBookByChapterId(chapter1.chapter_id) as BookInfo | null;
+          let title = bookInfo && bookInfo.title ? bookInfo.title : bookId;
+          let image: string | null = null;
+          if (bookInfo && bookInfo.images) {
+            try {
+              const imagesObj = JSON.parse(bookInfo.images);
+              image = imagesObj.chapter_cover || null;
+            } catch {}
+          }
+          completedBooksArr.push({
+            book_id: bookId,
+            title,
+            image,
+            completed_at: chapter5.completed_at
+          });
+        }
+      }
+      setCompletedBooks(completedBooksArr);
+    };
+    processCompletedBooks();
+  }, [booksData]);
+
+  useEffect(() => {
+    // Fetch total books on mount
+    const fetchTotalBooks = async () => {
+      try {
+        const stats = await getBookStatistics();
+        setTotalBooks(stats.total_books);
+      } catch (e) {
+        setTotalBooks(null);
+      }
+    };
+    fetchTotalBooks();
+  }, []);
+
   const cards = [
     {
       icon: '📚',
       label: 'Books Read',
-      value: currentData.booksRead,
+      value: totalBooks !== null ? `${currentData.booksRead} / ${totalBooks}` : currentData.booksRead,
       onPress: () => {
         setShowBooksModal(true);
         fetchBooksData();
@@ -227,16 +330,19 @@ export const QuickReport: React.FC<QuickReportProps> = ({
               <Text style={{ color: 'red', marginTop: 16 }}>{error}</Text>
             ) : (
               <FlatList
-                data={booksData}
-                keyExtractor={item => `${item.chapter_id}-${item.completed_at}`}
+                data={completedBooks}
+                keyExtractor={item => item.book_id}
                 style={{ marginTop: 12, maxHeight: 350 }}
                 renderItem={({ item }) => (
                   <View style={styles.bookItem}>
-                    <Text style={[styles.bookTitle, { color: isDark ? '#f7fafc' : '#1a202c' }]}>{item.genre} - {item.chapter_name}</Text>
-                    <Text style={[styles.bookMeta, { color: isDark ? '#a0aec0' : '#4a5568' }]}>Completed: {new Date(item.completed_at).toLocaleDateString()} | Score: {item.score}%</Text>
+                    {item.image && (
+                      <Image source={{ uri: item.image }} style={{ width: 60, height: 80, borderRadius: 8, marginBottom: 8 }} />
+                    )}
+                    <Text style={[styles.bookTitle, { color: isDark ? '#f7fafc' : '#1a202c' }]}>{item.title}</Text>
+                    <Text style={[styles.bookMeta, { color: isDark ? '#a0aec0' : '#4a5568' }]}>Completed: {new Date(item.completed_at).toLocaleDateString()}</Text>
                   </View>
                 )}
-                ListEmptyComponent={<Text style={{ color: isDark ? '#f7fafc' : '#1a202c', marginTop: 16 }}>No completed chapters found.</Text>}
+                ListEmptyComponent={<Text style={{ color: isDark ? '#f7fafc' : '#1a202c', marginTop: 16 }}>No completed books found.</Text>}
               />
             )}
           </View>

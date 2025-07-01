@@ -565,75 +565,77 @@ export default function ProfileScreen() {
           </ThemedView>
 
           {/* Dev Tools Card */}
-          <ThemedView style={[styles.devCard, { backgroundColor: isDark ? colors.card : '#FFFFFF' }]}>
-            <ThemedText style={[styles.devTitle, { color: colors.text }]}>
-              🛠️ Developer Tools
-            </ThemedText>
-            <ThemedText style={[styles.devDescription, { color: colors.textSecondary }]}>
-              Advanced tools for development and testing
-            </ThemedText>
-            <TouchableOpacity
-              style={[
-                styles.devButton,
-                { backgroundColor: isDark ? '#DC2626' : '#F43F5E' },
-                isClearingChapters && styles.buttonDisabled
-              ]}
-              onPress={handleClearCompletedChapters}
-              disabled={isClearingChapters}
-            >
-              <ThemedText style={[styles.devButtonText, { color: '#FFFFFF' }]}>
-                {isClearingChapters ? 'Clearing...' : '🗑️ Clear Completed Chapters'}
+          {user?.email && user.email.toLowerCase().includes('reading') && (
+            <ThemedView style={[styles.devCard, { backgroundColor: isDark ? colors.card : '#FFFFFF' }]}>
+              <ThemedText style={[styles.devTitle, { color: colors.text }]}>
+                🛠️ Developer Tools
               </ThemedText>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.devButton,
-                { backgroundColor: isDark ? '#059669' : '#10B981' },
-                isReloadingBooks && styles.buttonDisabled
-              ]}
-              onPress={handleReloadBooks}
-              disabled={isReloadingBooks}
-            >
-              <ThemedText style={[styles.devButtonText, { color: '#FFFFFF' }]}>
-                {isReloadingBooks ? 'Reloading...' : '📚 Reload Books from JSON'}
+              <ThemedText style={[styles.devDescription, { color: colors.textSecondary }]}>
+                Advanced tools for development and testing
               </ThemedText>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.devButton,
-                { backgroundColor: isDark ? '#3B82F6' : '#2563EB' }
-              ]}
-              onPress={handleIncrementReadingLevel}
-            >
-              <ThemedText style={[styles.devButtonText, { color: '#FFFFFF' }]}>
-                ⬆️ Increment Reading Level
-              </ThemedText>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.devButton,
-                { backgroundColor: isDark ? '#F59E0B' : '#D97706' }
-              ]}
-              onPress={handleDecrementReadingLevel}
-            >
-              <ThemedText style={[styles.devButtonText, { color: '#FFFFFF' }]}>
-                ⬇️ Decrement Reading Level
-              </ThemedText>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.devButton,
-                { backgroundColor: isDark ? '#8B5CF6' : '#7C3AED' },
-                isClearingLearnerReading && styles.buttonDisabled
-              ]}
-              onPress={handleClearLearnerReadingTable}
-              disabled={isClearingLearnerReading}
-            >
-              <ThemedText style={[styles.devButtonText, { color: '#FFFFFF' }]}>
-                {isClearingLearnerReading ? 'Clearing...' : '📖 Clear Learner Reading Table'}
-              </ThemedText>
-            </TouchableOpacity>
-          </ThemedView>
+              <TouchableOpacity
+                style={[
+                  styles.devButton,
+                  { backgroundColor: isDark ? '#DC2626' : '#F43F5E' },
+                  isClearingChapters && styles.buttonDisabled
+                ]}
+                onPress={handleClearCompletedChapters}
+                disabled={isClearingChapters}
+              >
+                <ThemedText style={[styles.devButtonText, { color: '#FFFFFF' }]}>
+                  {isClearingChapters ? 'Clearing...' : '🗑️ Clear Completed Chapters'}
+                </ThemedText>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.devButton,
+                  { backgroundColor: isDark ? '#059669' : '#10B981' },
+                  isReloadingBooks && styles.buttonDisabled
+                ]}
+                onPress={handleReloadBooks}
+                disabled={isReloadingBooks}
+              >
+                <ThemedText style={[styles.devButtonText, { color: '#FFFFFF' }]}>
+                  {isReloadingBooks ? 'Reloading...' : '📚 Reload Books from JSON'}
+                </ThemedText>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.devButton,
+                  { backgroundColor: isDark ? '#3B82F6' : '#2563EB' }
+                ]}
+                onPress={handleIncrementReadingLevel}
+              >
+                <ThemedText style={[styles.devButtonText, { color: '#FFFFFF' }]}>
+                  ⬆️ Increment Reading Level
+                </ThemedText>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.devButton,
+                  { backgroundColor: isDark ? '#F59E0B' : '#D97706' }
+                ]}
+                onPress={handleDecrementReadingLevel}
+              >
+                <ThemedText style={[styles.devButtonText, { color: '#FFFFFF' }]}>
+                  ⬇️ Decrement Reading Level
+                </ThemedText>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.devButton,
+                  { backgroundColor: isDark ? '#8B5CF6' : '#7C3AED' },
+                  isClearingLearnerReading && styles.buttonDisabled
+                ]}
+                onPress={handleClearLearnerReadingTable}
+                disabled={isClearingLearnerReading}
+              >
+                <ThemedText style={[styles.devButtonText, { color: '#FFFFFF' }]}>
+                  {isClearingLearnerReading ? 'Clearing...' : '📖 Clear Learner Reading Table'}
+                </ThemedText>
+              </TouchableOpacity>
+            </ThemedView>
+          )}
 
           {/* Show Upgrade to Pro button for free users */}
           {profileInfo?.subscription === 'free' && (

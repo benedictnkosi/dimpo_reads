@@ -232,23 +232,11 @@ export default function HomeScreen() {
       // Sort books by chapter count (descending)
       const sortedBooks = Object.values(chaptersPerBook).sort((a, b) => b.chapter_count - a.chapter_count);
       
-      sortedBooks.forEach((book, index) => {
-        console.log(`${index + 1}. ${book.book_id} (${book.genre}/${book.sub_genre})`);
-        console.log(`   Reading Level: ${book.reading_level}`);
-        console.log(`   Chapters: ${book.chapter_count}`);
-        console.log(`   Chapter List: ${book.chapters.map(c => `${c.chapter_number}:${c.chapter_name}`).join(', ')}`);
-        console.log('---');
-      });
       
       // Summary statistics
       const avgChaptersPerBook = allBooks.length / Object.keys(chaptersPerBook).length;
       const maxChapters = Math.max(...sortedBooks.map(b => b.chapter_count));
       const minChapters = Math.min(...sortedBooks.map(b => b.chapter_count));
-      
-      console.log('Summary:');
-      console.log(`- Average chapters per book: ${avgChaptersPerBook.toFixed(1)}`);
-      console.log(`- Most chapters in a book: ${maxChapters}`);
-      console.log(`- Least chapters in a book: ${minChapters}`);
       
     } catch (error) {
       console.error('Error counting chapters per book:', error);
@@ -450,7 +438,7 @@ export default function HomeScreen() {
       setShowAddModal(false);
       await loadSavingsData();
     } catch (error) {
-      setError('Failed to create savings jar');
+      setError('Failed to create savings goal');
     }
   };
 
@@ -1406,7 +1394,7 @@ export default function HomeScreen() {
 
             {/* Empty State or Jugs List */}
             <View style={styles.jugsHeader}>
-              <ThemedText style={styles.jugsTitle}>Your Savings Jars</ThemedText>
+              <ThemedText style={styles.jugsTitle}>Your Savings Goals</ThemedText>
               <Pressable
                 style={styles.addJugButton}
                 onPress={() => {
@@ -1417,7 +1405,7 @@ export default function HomeScreen() {
                   }
                 }}
               >
-                <ThemedText style={styles.addJugButtonText}>＋ Add Jar</ThemedText>
+                <ThemedText style={styles.addJugButtonText}>＋ Add Goal</ThemedText>
               </Pressable>
             </View>
             <View style={styles.jugsGrid}>
@@ -1456,7 +1444,7 @@ export default function HomeScreen() {
                 >
                   <View style={styles.placeholderContent}>
                     <ThemedText style={styles.placeholderEmoji}>➕</ThemedText>
-                    <ThemedText style={styles.placeholderText}>Add Another Jar</ThemedText>
+                    <ThemedText style={styles.placeholderText}>Add Another Goal</ThemedText>
                   </View>
                 </Pressable>
               )}
@@ -1547,7 +1535,7 @@ export default function HomeScreen() {
         <View style={styles.modalOverlay}>
           <ScrollView style={{ width: '100%', flex: 1, height: '80%' }} contentContainerStyle={{ flexGrow: 1, justifyContent: 'flex-start' }}>
             <View style={styles.modalContent}>
-              <ThemedText style={styles.modalTitle}>Create New Savings Jar</ThemedText>
+              <ThemedText style={styles.modalTitle}>Create New Savings Goal</ThemedText>
               <ThemedText style={{ fontWeight: '600', fontSize: 16, marginBottom: 8 }}>Choose an emoji</ThemedText>
               <View style={{ marginBottom: 16}}>
                 <ScrollView>

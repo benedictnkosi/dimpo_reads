@@ -53,7 +53,7 @@ export default function SavingsScreen() {
       setLoading(true);
       setError(null);
 
-      // Load all savings jars
+      // Load all savings goals
       const allJugs = await getAllSavingsJugs();
       setJugs(allJugs);
 
@@ -81,14 +81,14 @@ export default function SavingsScreen() {
       setShowAddModal(false);
       await loadSavingsData();
     } catch (error) {
-      setError('Failed to create savings jar');
-      console.error('Error creating savings jar:', error);
+      setError('Failed to create savings goal');
+      console.error('Error creating savings goal:', error);
     }
   };
 
   const handleDeleteJug = async (jug: SavingsJug) => {
     Alert.alert(
-      'Delete Savings Jar',
+      'Delete savings goal',
       `Are you sure you want to delete "${jug.name}"? This will also delete all its transactions.`,
       [
         { text: 'Cancel', style: 'cancel' },
@@ -100,8 +100,8 @@ export default function SavingsScreen() {
               await deleteSavingsJug(jug.id);
               await loadSavingsData();
             } catch (error) {
-              setError('Failed to delete savings jar');
-              console.error('Error deleting savings jar:', error);
+              setError('Failed to delete savings goal');
+              console.error('Error deleting savings goal:', error);
             }
           }
         }
@@ -410,7 +410,7 @@ export default function SavingsScreen() {
   return (
     <ScrollView style={styles.container}>
       <View style={styles.header}>
-        <ThemedText style={styles.title}>💰 Savings Jars</ThemedText>
+        <ThemedText style={styles.title}>💰 Savings Goals</ThemedText>
         <ThemedText style={styles.subtitle}>Manage your savings goals</ThemedText>
       </View>
 
@@ -447,22 +447,22 @@ export default function SavingsScreen() {
           {jugs.length === 0 ? (
             <View style={styles.emptyStateContainer}>
               <ThemedText style={styles.emptyStateIcon}>🏺</ThemedText>
-              <ThemedText style={styles.emptyStateTitle}>No Savings Jars Yet</ThemedText>
+              <ThemedText style={styles.emptyStateTitle}>No Savings Goals Yet</ThemedText>
               <ThemedText style={styles.emptyStateText}>
-                Create your first savings jar to start tracking your savings goals. 
-                You can create multiple jugs for different purposes like emergency fund, 
+                Create your first savings goal to start tracking your savings. 
+                You can create multiple goals for different purposes like emergency fund, 
                 vacation, or a new car.
               </ThemedText>
               <Pressable style={styles.bigButton} onPress={() => setShowAddModal(true)}>
-                <ThemedText style={styles.bigButtonText}>➕ Create Your First Savings Jar</ThemedText>
+                <ThemedText style={styles.bigButtonText}>➕ Create Your First Savings Goal</ThemedText>
               </Pressable>
             </View>
           ) : (
             <View style={styles.jugsContainer}>
               <View style={styles.jugsHeader}>
-                <ThemedText style={styles.jugsTitle}>Your Savings Jars ({jugs.length})</ThemedText>
+                <ThemedText style={styles.jugsTitle}>Your Savings Goals ({jugs.length})</ThemedText>
                 <Pressable style={styles.smallButton} onPress={() => setShowAddModal(true)}>
-                  <ThemedText style={styles.smallButtonText}>➕ Add Jar</ThemedText>
+                  <ThemedText style={styles.smallButtonText}>➕ Add Goal</ThemedText>
                 </Pressable>
               </View>
 
@@ -512,7 +512,7 @@ export default function SavingsScreen() {
       <Modal visible={showAddModal} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <ThemedText style={styles.modalTitle}>Create New Savings Jar</ThemedText>
+            <ThemedText style={styles.modalTitle}>Create New Savings Goal</ThemedText>
             <TextInput
               style={styles.modalInput}
               placeholder="Enter jar name..."

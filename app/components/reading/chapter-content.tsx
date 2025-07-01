@@ -586,6 +586,7 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         marginVertical: 4,
         position: 'relative',
+        paddingTop: 32,
     },
     closeButtonContainer: {
         position: 'absolute',

@@ -67,12 +67,12 @@ export const ContinueReadingCard: React.FC<ContinueReadingCardProps> = ({
     },
     card: {
       flexDirection: 'row',
-      minHeight: 140,
+      height: 180,
       position: 'relative',
     },
     imageContainer: {
-      width: 120,
-      height: 140,
+      width: 180,
+      height: '100%',
       position: 'relative',
     },
     image: {
@@ -193,13 +193,7 @@ export const ContinueReadingCard: React.FC<ContinueReadingCardProps> = ({
         
         <View style={styles.contentContainer}>
           <View>
-            <View style={styles.header}>
-              <View style={styles.readingLevel}>
-                <ThemedText style={styles.readingLevelText}>
-                  {book.genre || 'General'}
-                </ThemedText>
-              </View>
-            </View>
+            
             
             <ThemedText style={styles.title} numberOfLines={2}>
               {book.title}
@@ -223,7 +217,7 @@ export const ContinueReadingCard: React.FC<ContinueReadingCardProps> = ({
             >
               <Ionicons name="play" size={16} color="#fff" />
               <ThemedText style={styles.continueButtonText}>
-                {isNextChapter ? 'Next Chapter' : 'Continue Reading'}
+                Continue
               </ThemedText>
             </Pressable>
           </View>

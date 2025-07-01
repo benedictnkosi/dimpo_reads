@@ -98,7 +98,7 @@ export function Header() {
             Dimpo Reads <ThemedText style={styles.wave}>💰</ThemedText>
           </ThemedText>
           <ThemedText style={[styles.schoolText, { color: isDark ? '#9CA3AF' : '#64748B' }]}>
-            Master Reading with interactive lessons.
+          Read a story. Earn some coins.
           </ThemedText>
         </View>
         <TouchableOpacity onPress={() => router.push('/profile')}>
