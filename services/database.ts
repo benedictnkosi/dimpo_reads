@@ -1356,7 +1356,35 @@ export const getRandomUncompletedBookByReadingLevel = (learnerUid: string, readi
     }
 
     try {
-      // Get a random book at the specified reading level that the user hasn't completed with a score of 80+
+      // Get all uncompleted books at the specified reading level, but only chapter 1
+      const allUncompleted = db.getAllSync<{
+        id: number;
+        book_id: string;
+        genre: string;
+        sub_genre: string;
+        chapter_number: number;
+        chapter_name: string;
+        content: string;
+        quiz: string | null;
+        images: string | null;
+        word_count: number;
+        reading_level: string;
+        created: string;
+        updated: string;
+      }>(
+        `SELECT b.* FROM book b
+         WHERE b.reading_level = ? 
+         AND b.chapter_number = 1
+         AND b.id NOT IN (
+           SELECT cc.chapter_id 
+           FROM chapter_completion cc 
+           WHERE cc.learner_uid = ? AND cc.score >= 80
+         )`,
+        [readingLevel, learnerUid]
+      );
+      console.log('[getRandomUncompletedBookByReadingLevel] Uncompleted books at level', readingLevel, ':', allUncompleted.map(b => `${b.book_id}:${b.chapter_number}:${b.chapter_name}`).join(', '));
+
+      // Get a random book at the specified reading level that the user hasn't completed with a score of 80+, but only chapter 1
       const result = db.getFirstSync<{
         id: number;
         book_id: string;
@@ -1374,6 +1402,7 @@ export const getRandomUncompletedBookByReadingLevel = (learnerUid: string, readi
       }>(
         `SELECT b.* FROM book b
          WHERE b.reading_level = ? 
+         AND b.chapter_number = 1
          AND b.id NOT IN (
            SELECT cc.chapter_id 
            FROM chapter_completion cc 
@@ -1897,7 +1926,7 @@ export const getNextChapterByReadingLevel = (bookId: string, currentChapterNumbe
 export const getQuickReportData = (learnerUid?: string): Promise<{
   booksRead: number;
   totalEarned: number;
-  chaptersRead: number;
+  totalReadingTime: number;
 }> => {
   return new Promise((resolve, reject) => {
     if (!db) {
@@ -1906,21 +1935,21 @@ export const getQuickReportData = (learnerUid?: string): Promise<{
     }
 
     try {
-      let chaptersQuery = 'SELECT COUNT(*) as count FROM chapter_completion';
+      let readingTimeQuery = 'SELECT COALESCE(SUM(duration), 0) as total_time FROM chapter_completion';
       let booksQuery = `SELECT COUNT(DISTINCT b.book_id) as count 
                        FROM chapter_completion cc
                        JOIN book b ON cc.chapter_id = b.id`;
       
       // If learnerUid is provided, filter by user and score >= 80
       if (learnerUid) {
-        chaptersQuery += ' WHERE learner_uid = ? AND score >= 80';
+        readingTimeQuery += ' WHERE learner_uid = ? AND score >= 80';
         booksQuery += ' WHERE cc.learner_uid = ? AND cc.score >= 80';
       }
       
-      // Get completed chapters count
-      const chaptersResult = learnerUid 
-        ? db.getFirstSync<{ count: number }>(chaptersQuery, [learnerUid])
-        : db.getFirstSync<{ count: number }>(chaptersQuery);
+      // Get total reading time (duration is in seconds)
+      const readingTimeResult = learnerUid 
+        ? db.getFirstSync<{ total_time: number }>(readingTimeQuery, [learnerUid])
+        : db.getFirstSync<{ total_time: number }>(readingTimeQuery);
       
       // Get total earned from all positive savings transactions
       const earningsResult = db.getFirstSync<{ total: number }>(
@@ -1935,7 +1964,7 @@ export const getQuickReportData = (learnerUid?: string): Promise<{
       resolve({
         booksRead: booksResult?.count || 0,
         totalEarned: earningsResult?.total || 0,
-        chaptersRead: chaptersResult?.count || 0
+        totalReadingTime: readingTimeResult?.total_time || 0
       });
     } catch (error) {
       console.error('Error fetching QuickReport data:', error);
@@ -1947,7 +1976,7 @@ export const getQuickReportData = (learnerUid?: string): Promise<{
 export const getQuickReportDataByPeriod = (learnerUid?: string, period: 'lifetime' | 'week' | 'month' = 'lifetime'): Promise<{
   booksRead: number;
   totalEarned: number;
-  chaptersRead: number;
+  totalReadingTime: number;
 }> => {
   return new Promise((resolve, reject) => {
     if (!db) {
@@ -1966,7 +1995,7 @@ export const getQuickReportDataByPeriod = (learnerUid?: string, period: 'lifetim
         dateFilter = 'AND cc.completed_at >= datetime("now", "-30 days")';
       }
       
-      let chaptersQuery = `SELECT COUNT(*) as count FROM chapter_completion cc WHERE 1=1 ${dateFilter}`;
+      let readingTimeQuery = `SELECT COALESCE(SUM(cc.duration), 0) as total_time FROM chapter_completion cc WHERE 1=1 ${dateFilter}`;
       let booksQuery = `SELECT COUNT(DISTINCT b.book_id) as count 
                        FROM chapter_completion cc
                        JOIN book b ON cc.chapter_id = b.id
@@ -1974,15 +2003,15 @@ export const getQuickReportDataByPeriod = (learnerUid?: string, period: 'lifetim
       
       // If learnerUid is provided, filter by user and score >= 80
       if (learnerUid) {
-        chaptersQuery += ' AND learner_uid = ? AND score >= 80';
+        readingTimeQuery += ' AND learner_uid = ? AND score >= 80';
         booksQuery += ' AND cc.learner_uid = ? AND cc.score >= 80';
         dateParams = [learnerUid];
       }
       
-      // Get completed chapters count
-      const chaptersResult = learnerUid 
-        ? db.getFirstSync<{ count: number }>(chaptersQuery, dateParams)
-        : db.getFirstSync<{ count: number }>(chaptersQuery);
+      // Get total reading time (duration is in seconds)
+      const readingTimeResult = learnerUid 
+        ? db.getFirstSync<{ total_time: number }>(readingTimeQuery, dateParams)
+        : db.getFirstSync<{ total_time: number }>(readingTimeQuery);
       
       // Get total earned from positive savings transactions with date filter
       let earningsQuery = 'SELECT COALESCE(SUM(amount), 0) as total FROM savings_transaction WHERE amount > 0';
@@ -2004,7 +2033,7 @@ export const getQuickReportDataByPeriod = (learnerUid?: string, period: 'lifetim
       resolve({
         booksRead: booksResult?.count || 0,
         totalEarned: earningsResult?.total || 0,
-        chaptersRead: chaptersResult?.count || 0
+        totalReadingTime: readingTimeResult?.total_time || 0
       });
     } catch (error) {
       console.error('Error fetching QuickReport data by period:', error);
@@ -2276,7 +2305,7 @@ export const initializeReadingLevel = async (): Promise<void> => {
 // Get current reading level with fallback to Explorer
 export const getCurrentReadingLevel = async (): Promise<string> => {
   try {
-    const stored = await AsyncStorage.getItem('current_reading_level');
+    const stored = await AsyncStorage.getItem('readingLevel');
     return stored || 'Explorer';
   } catch (error) {
     console.error('Error getting current reading level:', error);

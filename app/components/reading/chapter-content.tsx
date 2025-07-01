@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, NativeSyntheticEvent, NativeScrollEvent, Pressable, Image, Animated } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, NativeSyntheticEvent, NativeScrollEvent, Pressable, Image, Animated, Modal, TouchableOpacity, Clipboard } from 'react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { HOST_URL } from '@/config/api';
 import { analytics } from '@/services/analytics';
@@ -7,14 +7,17 @@ import { useAuth } from '@/contexts/AuthContext';
 import { getLearner } from '@/services/api';
 import { getCurrentReadingLevel } from '@/services/database';
 import { router } from 'expo-router';
+import dictionary from '@/assets/dictionary.json';
+import _ from 'lodash';
 
 interface ChapterContentProps {
+    bookName?: string;
     chapterName: string;
     chapterNumber: number;
     content: string;
     fontSize?: number;
     onProgress?: (progress: number) => void;
-    onStartQuiz?: (wordCount: number, readingSpeed: number) => void;
+    onStartQuiz?: (wordCount: number, readingDuration: number) => void;
     onClose?: () => void;
     image1?: string; // URL for first image placeholder
     image2?: string; // URL for second image placeholder
@@ -30,11 +33,11 @@ async function logAnalyticsEvent(eventName: string, eventParams?: Record<string,
     try {
         await analytics.track(eventName, eventParams);
     } catch (error) {
-        console.error('[Analytics] Error logging event:', error);
+        // ... existing code ...
     }
 }
 
-export function ChapterContent({ chapterName, chapterNumber, content, fontSize = 18, onProgress, onStartQuiz, onClose, image1, image2, readingLevel }: ChapterContentProps) {
+export function ChapterContent({ bookName, chapterName: initialChapterName, chapterNumber, content: initialContent, fontSize = 18, onProgress, onStartQuiz, onClose, image1, image2, readingLevel }: ChapterContentProps) {
     const { colors } = useTheme();
     const { user } = useAuth();
     const [localProgress, setLocalProgress] = useState(0);
@@ -47,6 +50,23 @@ export function ChapterContent({ chapterName, chapterNumber, content, fontSize =
     const startTimeRef = useRef<number>(Date.now());
     const [image1Url, setImage1Url] = useState<string | null>(null);
     const [image2Url, setImage2Url] = useState<string | null>(null);
+    const [modalVisible, setModalVisible] = useState(false);
+    const [selectedWord, setSelectedWord] = useState<string | null>(null);
+    const [selectedWordMeanings, setSelectedWordMeanings] = useState<string[]>([]);
+    const [selectedWordPhonetic, setSelectedWordPhonetic] = useState<string | null>(null);
+    const [isFetchingDefinition, setIsFetchingDefinition] = useState(false);
+    const [fetchError, setFetchError] = useState<string | null>(null);
+
+    // Extract chapter name from content if present at the start
+    let chapterName = initialChapterName;
+    let content = initialContent;
+    // Regex: e.g., 'Chapter 2: Rivalry Ignites' or 'Chapter 2' at the start
+    const chapterHeadingRegex = /^(Chapter\s*\d+(:?\s*[:\-]?\s*[^\n]*)?)\n+([\s\S]*)/i;
+    const match = initialContent.match(chapterHeadingRegex);
+    if (match) {
+        chapterName = match[1].trim();
+        content = match[3];
+    }
 
     // Calculate word count from content
     const wordCount = content.split(/\s+/).filter(word => word.length > 0).length;
@@ -58,7 +78,6 @@ export function ChapterContent({ chapterName, chapterNumber, content, fontSize =
                 const readingLevel = await getCurrentReadingLevel();
                 setCurrentReadingLevel(readingLevel);
             } catch (error) {
-                console.error('Error loading reading level:', error);
                 setCurrentReadingLevel('Explorer');
             }
         };
@@ -90,10 +109,10 @@ export function ChapterContent({ chapterName, chapterNumber, content, fontSize =
         const isExplorer = currentReadingLevel === 'Explorer';
         
         return {
-            fontSize: isExplorer ? Math.max(fontSize + 4, 22) : fontSize,
-            lineHeight: isExplorer ? Math.max(fontSize + 8, 30) : fontSize + 6,
+            fontSize: isExplorer ? Math.max(fontSize + 8, 26) : fontSize,
+            lineHeight: isExplorer ? Math.max(fontSize + 12, 36) : fontSize + 6,
             letterSpacing: isExplorer ? 0.5 : 0,
-            marginBottom: isExplorer ? 16 : 12,
+            marginBottom: isExplorer ? 20 : 12,
         };
     };
 
@@ -139,16 +158,13 @@ export function ChapterContent({ chapterName, chapterNumber, content, fontSize =
             
             try {
                 const imageUrl = `${HOST_URL}/public/learn/book/get-image?image=${imageName}`;
-                console.log('imageUrl', imageUrl);
                 const response = await fetch(imageUrl, { method: 'HEAD' });
                 if (response.ok) {
                     setImageUrl(imageUrl);
                 } else {
-                    console.warn(`Image not found: ${imageName}`);
                     setImageUrl(null);
                 }
             } catch (error) {
-                console.warn(`Failed to fetch image ${imageName}:`, error);
                 setImageUrl(null);
             }
         };
@@ -203,30 +219,71 @@ export function ChapterContent({ chapterName, chapterNumber, content, fontSize =
     }
 
     const handleStartQuiz = () => {
-        console.log('Quiz button pressed!'); // Debug log
-        
         // Calculate reading duration
         const endTime = Date.now();
         const readingDuration = endTime - startTimeRef.current;
         const readingDurationSeconds = Math.round(readingDuration / 1000);
-        
-        // Calculate reading speed (words per minute)
-        const readingSpeedWPM = Math.round((wordCount / readingDurationSeconds) * 60);
-        
         logAnalyticsEvent('quiz_started', {
             chapter_name: chapterName,
             chapter_number: chapterNumber,
             reading_progress: localProgress,
             word_count: wordCount,
-            reading_duration_seconds: readingDurationSeconds,
-            reading_speed_wpm: readingSpeedWPM
+            reading_duration_seconds: readingDurationSeconds
         });
-        
-        console.log(`Reading duration: ${readingDurationSeconds} seconds`);
-        console.log(`Reading speed: ${readingSpeedWPM} words per minute`);
-        
-        onStartQuiz?.(wordCount, readingSpeedWPM);
+        onStartQuiz?.(wordCount, readingDurationSeconds);
     };
+
+    // Fetch word definition from Free Dictionary API
+    async function fetchWordDefinition(word: string) {
+        setIsFetchingDefinition(true);
+        setFetchError(null);
+        setSelectedWordMeanings([]);
+        setSelectedWordPhonetic(null);
+        try {
+            const cleanWord = word.replace(/[^a-zA-Z]/g, '');
+            const response = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${cleanWord}`);
+            if (!response.ok) {
+                throw new Error('No definition found.');
+            }
+            const data = await response.json();
+            // Get first phonetic
+            let phonetic: string | null = null;
+            if (Array.isArray(data) && data[0]?.phonetics?.length) {
+                const found = data[0].phonetics.find((p: any) => p.text);
+                phonetic = found ? found.text : null;
+            }
+            setSelectedWordPhonetic(phonetic);
+            // Gather all definitions from all meanings
+            const allDefinitions: string[] = [];
+            if (Array.isArray(data)) {
+                data.forEach((entry: any) => {
+                    if (Array.isArray(entry.meanings)) {
+                        entry.meanings.forEach((meaningObj: any) => {
+                            if (Array.isArray(meaningObj.definitions)) {
+                                meaningObj.definitions.forEach((defObj: any) => {
+                                    if (defObj.definition) {
+                                        allDefinitions.push(defObj.definition);
+                                    }
+                                });
+                            }
+                        });
+                    }
+                });
+            }
+            if (allDefinitions.length > 0) {
+                setSelectedWordMeanings(allDefinitions.slice(0, 3));
+            } else {
+                setSelectedWordMeanings([]);
+                setFetchError('No definition found.');
+            }
+        } catch (err) {
+            setSelectedWordMeanings([]);
+            setSelectedWordPhonetic(null);
+            setFetchError('No definition found.');
+        } finally {
+            setIsFetchingDefinition(false);
+        }
+    }
 
     // Function to process content and replace image placeholders with actual images
     const processContentWithImages = (content: string): React.ReactNode[] => {
@@ -269,7 +326,7 @@ export function ChapterContent({ chapterName, chapterNumber, content, fontSize =
         }
 
         // Log the final content after image logic
-        console.log('[ChapterContent] Final content after image logic:', contentWithImage2);
+        // ... existing code ...
 
         // Split for rendering
         const parts = contentWithImage2.split(/(\[IMAGE_PLACEHOLDER_2\])/);
@@ -282,19 +339,38 @@ export function ChapterContent({ chapterName, chapterNumber, content, fontSize =
                         <Image
                             key={`img-2-${index}`}
                             source={{ uri: image2Url }}
-                            style={{ width: '100%', height: 200, borderRadius: 12, marginVertical: 16 }}
+                            style={{ width: '100%', height: undefined, aspectRatio: 1, borderRadius: 12, marginVertical: 16 }}
                             resizeMode="cover"
                         />
                     );
                 }
             } else if (part.trim().length > 0) {
+                // Split part into words and spaces, preserving spaces
+                const wordsAndSpaces = part.split(/(\s+)/);
                 result.push(
                     <Text
                         key={`text-${index}`}
                         style={[styles.content, { color: colors.text, ...getTextStyles() }]}
                         accessibilityLabel={removeDoubleAsteriskText(part)}
                     >
-                        {removeDoubleAsteriskText(part)}
+                        {wordsAndSpaces.map((word, i) => {
+                            if (/^\s+$/.test(word)) {
+                                return word;
+                            }
+                            return (
+                                <Text
+                                    key={`word-${index}-${i}`}
+                                    onLongPress={() => {
+                                        setSelectedWord(word);
+                                        setModalVisible(true);
+                                        fetchWordDefinition(word);
+                                    }}
+                                    style={{ backgroundColor: selectedWord === word && modalVisible ? colors.surface : undefined }}
+                                >
+                                    {removeDoubleAsteriskText(word)}
+                                </Text>
+                            );
+                        })}
                     </Text>
                 );
             }
@@ -338,6 +414,16 @@ export function ChapterContent({ chapterName, chapterNumber, content, fontSize =
                         </Pressable>
                     </View>
                     
+                    {/* Book Name Display */}
+                    {bookName && (
+                        <Text
+                            style={{ color: colors.text, fontSize: 18, fontWeight: '600', textAlign: 'center', marginBottom: 2 }}
+                            accessibilityRole="header"
+                            accessibilityLabel={`Book: ${bookName}`}
+                        >
+                            {bookName}
+                        </Text>
+                    )}
                     <Text
                         style={[styles.chapterName, { color: colors.primary }, getChapterNameStyles()]}
                         accessibilityRole="header"
@@ -362,7 +448,7 @@ export function ChapterContent({ chapterName, chapterNumber, content, fontSize =
                 {shouldShowImage1AtTop && (
                     <Image
                         source={{ uri: image1Url! }}
-                        style={{ width: '100%', height: 200, borderRadius: 12, marginVertical: 16 }}
+                        style={{ width: '100%', height: undefined, aspectRatio: 1, borderRadius: 12, marginVertical: 16 }}
                         resizeMode="cover"
                     />
                 )}
@@ -394,6 +480,47 @@ export function ChapterContent({ chapterName, chapterNumber, content, fontSize =
                     </View>
                 )}
             </ScrollView>
+            {/* Modal for word context */}
+            <Modal
+                visible={modalVisible}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setModalVisible(false)}
+            >
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.3)' }}>
+                    <View style={{ backgroundColor: colors.surface, padding: 24, borderRadius: 16, alignItems: 'center', minWidth: 200 }}>
+                        
+                        {isFetchingDefinition ? (
+                            <Text style={{ fontSize: 18, color: '#FFB300', marginBottom: 16, textAlign: 'center' }}>Looking up...</Text>
+                        ) : fetchError ? (
+                            <Text style={{ fontSize: 18, color: '#FF5252', marginBottom: 16, textAlign: 'center' }}>{fetchError}</Text>
+                        ) : selectedWordMeanings.length > 0 ? (
+                            <View style={{ marginBottom: 12, width: 260 }}>
+                                {/* Word and phonetic */}
+                                <View style={{ alignItems: 'center', marginBottom: 10 }}>
+                                    <Text style={{ fontSize: 28, fontWeight: 'bold', color: '#4F8EF7', marginBottom: 2 }}>{selectedWord}</Text>
+                                    {selectedWordPhonetic && (
+                                        <Text style={{ fontSize: 18, color: '#43A047', fontStyle: 'italic', marginBottom: 6 }}>{selectedWordPhonetic}</Text>
+                                    )}
+                                </View>
+                                {/* Meanings */}
+                                <View style={{ backgroundColor: '#FFF8E1', borderRadius: 16, padding: 12, borderWidth: 2, borderColor: '#FFD54F', marginBottom: 8 }}>
+                                    {selectedWordMeanings.map((meaning, idx) => (
+                                        <View key={idx} style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 8 }}>
+                                            <Text style={{ fontSize: 20, color: '#FFB300', fontWeight: 'bold', marginRight: 8 }}>{String.fromCodePoint(0x1F4D6)}</Text>
+                                            <Text style={{ fontSize: 16, color: '#333', flex: 1 }}>{meaning}</Text>
+                                        </View>
+                                    ))}
+                                </View>
+                                <Text style={{ fontSize: 14, color: '#888', textAlign: 'center', marginTop: 4 }}>Powered by <Text style={{ color: '#4F8EF7', fontWeight: 'bold' }}>dictionaryapi.dev</Text></Text>
+                            </View>
+                        ) : null}
+                        <TouchableOpacity onPress={() => setModalVisible(false)} style={{ marginTop: 8, backgroundColor: '#4F8EF7', borderRadius: 12, paddingVertical: 8, paddingHorizontal: 24, alignSelf: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 4, elevation: 2 }}>
+                            <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold' }}>Yay, Got it!</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
         </View>
     );
 }

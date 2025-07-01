@@ -24,6 +24,11 @@ export const ContinueReadingCard: React.FC<ContinueReadingCardProps> = ({
 }) => {
   const { colors, isDark } = useTheme();
 
+  // Log the book reading level for debugging
+  React.useEffect(() => {
+    console.log('Book reading level:', book.reading_level);
+  }, [book.reading_level]);
+
   // Get image source - use book image if available, otherwise use default reading image
   const imageSource =
     typeof book.images === 'number'
@@ -35,14 +40,14 @@ export const ContinueReadingCard: React.FC<ContinueReadingCardProps> = ({
   // Generate a gradient based on the genre
   const getGradientColors = (): [string, string] => {
     const gradients: Record<string, [string, string]> = {
-      'fiction': ['#667eea', '#764ba2'],
-      'non-fiction': ['#f093fb', '#f5576c'],
-      'mystery': ['#4facfe', '#00f2fe'],
-      'romance': ['#fa709a', '#fee140'],
-      'sci-fi': ['#a8edea', '#fed6e3'],
-      'fantasy': ['#ffecd2', '#fcb69f'],
-      'adventure': ['#ff9a9e', '#fecfef'],
-      'default': ['#667eea', '#764ba2']
+      'fiction': ['#3a3a3a', '#5a5a5a'],
+      'non-fiction': ['#3a3a3a', '#5a5a5a'],
+      'mystery': ['#3a3a3a', '#2a2a4a'],
+      'romance': ['#5a2c91', '#e78d97'],
+      'sci-fi': ['#3a3a3a', '#2a3a4a'],
+      'fantasy': ['#3a3a3a', '#6b7cb7'],
+      'adventure': ['#3a3a3a', '#4a5a6a'],
+      'default': ['#3a3a3a', '#5a5a5a']
     };
     
     const genre = book.genre?.toLowerCase() || 'default';
@@ -81,7 +86,7 @@ export const ContinueReadingCard: React.FC<ContinueReadingCardProps> = ({
       left: 0,
       right: 0,
       bottom: 0,
-      backgroundColor: 'rgba(0, 0, 0, 0.3)',
+      backgroundColor: 'rgba(0, 0, 0, 0.45)',
     },
     contentContainer: {
       flex: 1,

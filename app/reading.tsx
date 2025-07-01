@@ -32,6 +32,7 @@ interface Book {
   reading_level: string;
   created: string;
   updated: string;
+  title: string | null;
 }
 
 export default function ReadingScreen() {
@@ -42,6 +43,7 @@ export default function ReadingScreen() {
   const [readingProgress, setReadingProgress] = useState(0);
   const [showQuiz, setShowQuiz] = useState(false);
   const [readingSpeed, setReadingSpeed] = useState<number>(0);
+  const [readingDuration, setReadingDuration] = useState<number>(0);
 
   const router = useRouter();
   const { colors, isDark } = useTheme();
@@ -130,9 +132,9 @@ export default function ReadingScreen() {
     );
   };
 
-  const handleStartQuiz = (wordCount: number, readingSpeedWPM: number) => {
-    console.log('Starting quiz with word count:', wordCount, 'and reading speed:', readingSpeedWPM, 'WPM');
-    setReadingSpeed(readingSpeedWPM);
+  const handleStartQuiz = (wordCount: number, readingDuration: number) => {
+    console.log('Starting quiz with word count:', wordCount, 'and reading duration:', readingDuration, 'seconds');
+    setReadingDuration(readingDuration);
     setShowQuiz(true);
   };
 
@@ -312,6 +314,7 @@ export default function ReadingScreen() {
           {/* Book Content */}
           <View style={styles.bookContentContainer}>
             <ChapterContent 
+              bookName={currentBook.title || ''}
               chapterName={currentBook.chapter_name}
               chapterNumber={currentBook.chapter_number}
               content={currentBook.content}
@@ -354,7 +357,7 @@ export default function ReadingScreen() {
             chapterId={currentBook.id}
             onClose={handleQuizClose}
             wordCount={currentBook.word_count}
-            readingSpeed={readingSpeed}
+            readingDuration={readingDuration}
           />
         </View>
       )}
