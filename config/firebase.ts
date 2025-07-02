@@ -3,16 +3,15 @@ import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
 import { getAuth, setPersistence } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDICoPuUXQf_NSYVOsmR5h1Naphl1y25UU",
-  authDomain: "southafricanlanguages.firebaseapp.com",
-  projectId: "southafricanlanguages",
-  storageBucket: "southafricanlanguages.firebasestorage.app",
-  messagingSenderId: "528892435856",
-  appId: "1:528892435856:web:49b522bdd069addab56715",
-  measurementId: "G-8KE03QSN0B"
+  apiKey: "AIzaSyA19oZVV-JIleL-XlEbDK8k-KPNk1vod8E",
+  authDomain: "exam-quiz-b615e.firebaseapp.com",
+  projectId: "exam-quiz-b615e",
+  storageBucket: "exam-quiz-b615e.firebasestorage.app",
+  messagingSenderId: "619089624841",
+  appId: "1:619089624841:web:8cdb542ea7c8eb22681dd8",
+  measurementId: "G-MR80CKN8H9"
 };
 
 // Initialize Firebase

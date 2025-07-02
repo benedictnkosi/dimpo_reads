@@ -61,12 +61,12 @@ const SAMPLE_TRANSACTIONS = [
 ];
 
 // Initialize savings with sample data
-export const initializeSavingsWithSampleData = async (): Promise<void> => {
+export const initializeSavingsWithSampleData = async (profile_id: string): Promise<void> => {
   try {
     console.log('[SavingsService] Initializing savings with sample data...');
     
     // Check if savings jars already exist
-    const existingJugs = await getAllSavingsJugs();
+    const existingJugs = await getAllSavingsJugs(profile_id);
     
     if (existingJugs.length > 0) {
       console.log('[SavingsService] Savings jugs already exist, skipping initialization');
@@ -77,7 +77,8 @@ export const initializeSavingsWithSampleData = async (): Promise<void> => {
     const jugIds: { [key: string]: number } = {};
     
     for (const jug of SAMPLE_SAVINGS_JUGS) {
-      const jugId = await insertSavingsJug(jug);
+      const emoji = (jug as any).emoji || '💰';
+      const jugId = await insertSavingsJug({ name: jug.name, emoji, profile_id });
       jugIds[jug.name] = jugId;
       console.log(`[SavingsService] Created savings jar: ${jug.name} (ID: ${jugId})`);
     }
@@ -89,12 +90,10 @@ export const initializeSavingsWithSampleData = async (): Promise<void> => {
         await insertSavingsTransaction({
           savings_jug_id: jugId,
           transaction_name: transaction.transaction_name,
-          amount: transaction.amount,
-          date: transaction.date
+          amount: transaction.amount
         });
-        
         // Update jug balance
-        const jug = await getSavingsJugById(jugId);
+        const jug = await getSavingsJugById(jugId, profile_id);
         if (jug) {
           const newBalance = jug.balance + transaction.amount;
           await updateSavingsJugBalance(jugId, newBalance);
@@ -105,7 +104,7 @@ export const initializeSavingsWithSampleData = async (): Promise<void> => {
     console.log('[SavingsService] Successfully initialized savings with sample data');
     
     // Log statistics
-    const stats = await getSavingsStatistics();
+    const stats = await getSavingsStatistics(profile_id);
     console.log('[SavingsService] Savings Statistics:', stats);
     
   } catch (error) {
@@ -115,10 +114,10 @@ export const initializeSavingsWithSampleData = async (): Promise<void> => {
 };
 
 // Add money to a savings jar
-export const addMoneyToJug = async (jugId: number, amount: number, transactionName: string): Promise<void> => {
+export const addMoneyToJug = async (jugId: number, amount: number, transactionName: string, profile_id: string): Promise<void> => {
   try {
     // Get current jug
-    const jug = await getSavingsJugById(jugId);
+    const jug = await getSavingsJugById(jugId, profile_id);
     if (!jug) {
       throw new Error('Savings jug not found');
     }
@@ -142,10 +141,10 @@ export const addMoneyToJug = async (jugId: number, amount: number, transactionNa
 };
 
 // Remove money from a savings jar
-export const removeMoneyFromJug = async (jugId: number, amount: number, transactionName: string): Promise<void> => {
+export const removeMoneyFromJug = async (jugId: number, amount: number, transactionName: string, profile_id: string): Promise<void> => {
   try {
     // Get current jug
-    const jug = await getSavingsJugById(jugId);
+    const jug = await getSavingsJugById(jugId, profile_id);
     if (!jug) {
       throw new Error('Savings jug not found');
     }
@@ -177,12 +176,13 @@ export const transferBetweenJugs = async (
   fromJugId: number, 
   toJugId: number, 
   amount: number, 
-  transactionName: string
+  transactionName: string,
+  profile_id: string
 ): Promise<void> => {
   try {
     // Get both jugs
-    const fromJug = await getSavingsJugById(fromJugId);
-    const toJug = await getSavingsJugById(toJugId);
+    const fromJug = await getSavingsJugById(fromJugId, profile_id);
+    const toJug = await getSavingsJugById(toJugId, profile_id);
     
     if (!fromJug || !toJug) {
       throw new Error('One or both savings jars not found');
@@ -193,10 +193,10 @@ export const transferBetweenJugs = async (
     }
     
     // Remove from source jug
-    await removeMoneyFromJug(fromJugId, amount, `Transfer to ${toJug.name}: ${transactionName}`);
+    await removeMoneyFromJug(fromJugId, amount, `Transfer to ${toJug.name}: ${transactionName}`, profile_id);
     
     // Add to destination jug
-    await addMoneyToJug(toJugId, amount, `Transfer from ${fromJug.name}: ${transactionName}`);
+    await addMoneyToJug(toJugId, amount, `Transfer from ${fromJug.name}: ${transactionName}`, profile_id);
     
     console.log(`[SavingsService] Transferred ${amount} from ${fromJug.name} to ${toJug.name}`);
   } catch (error) {
@@ -206,13 +206,13 @@ export const transferBetweenJugs = async (
 };
 
 // Get jug balance history
-export const getJugBalanceHistory = async (jugId: number, days: number = 30): Promise<Array<{
+export const getJugBalanceHistory = async (jugId: number, days: number = 30, profile_id: string): Promise<Array<{
   date: string;
   balance: number;
   transactions: number;
 }>> => {
   try {
-    const jug = await getSavingsJugById(jugId);
+    const jug = await getSavingsJugById(jugId, profile_id);
     if (!jug) {
       throw new Error('Savings jug not found');
     }
@@ -259,7 +259,7 @@ export const getJugBalanceHistory = async (jugId: number, days: number = 30): Pr
 };
 
 // Get savings summary
-export const getSavingsSummary = async (): Promise<{
+export const getSavingsSummary = async (profile_id: string): Promise<{
   totalBalance: number;
   totalJugs: number;
   totalTransactions: number;
@@ -273,9 +273,9 @@ export const getSavingsSummary = async (): Promise<{
   }>;
 }> => {
   try {
-    const stats = await getSavingsStatistics();
-    const allJugs = await getAllSavingsJugs();
-    const allTransactions = await getAllSavingsTransactions();
+    const stats = await getSavingsStatistics(profile_id);
+    const allJugs = await getAllSavingsJugs(profile_id);
+    const allTransactions = await getAllSavingsTransactions(profile_id);
     
     // Find top jug by balance
     const topJug = allJugs.length > 0 ? {
@@ -285,7 +285,7 @@ export const getSavingsSummary = async (): Promise<{
     
     // Get recent transactions (last 5)
     const recentTransactions = allTransactions.slice(0, 5).map(async (transaction) => {
-      const jug = await getSavingsJugById(transaction.savings_jug_id);
+      const jug = await getSavingsJugById(transaction.savings_jug_id, profile_id);
       return {
         jugName: jug?.name || 'Unknown',
         transaction_name: transaction.transaction_name,

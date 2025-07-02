@@ -25,6 +25,20 @@ cp app-build.gradle app-build.gradle.tmp
 CURRENT_CODE=$(grep 'versionCode' app-build.gradle.tmp | grep -o '[0-9]\+')
 CURRENT_NAME=$(grep 'versionName' app-build.gradle.tmp | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+')
 
+# Debug output
+echo "CURRENT_CODE: $CURRENT_CODE"
+echo "CURRENT_NAME: $CURRENT_NAME"
+
+# Error handling
+if [ -z "$CURRENT_CODE" ]; then
+  echo "Error: versionCode not found in app-build.gradle.tmp"
+  exit 1
+fi
+if [ -z "$CURRENT_NAME" ]; then
+  echo "Error: versionName not found in app-build.gradle.tmp"
+  exit 1
+fi
+
 # Increment versionCode
 NEW_CODE=$((CURRENT_CODE + 1))
 

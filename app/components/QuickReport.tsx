@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, Text, Pressable, Modal, ActivityIndicator, FlatList, Image } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../../contexts/ThemeContext';
-import { getUserCompletedChaptersWithScore, getBookByBookIdAndChapterNumber, getBookByChapterId, getBookStatistics } from '@/services/database';
+import { getUserCompletedChaptersWithScore, getBookByBookIdAndChapterNumber, getBookByChapterId, getBookStatistics, getAllProfiles } from '@/services/database';
 import { useAuth } from '@/contexts/AuthContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface QuickReportProps {
   lifetimeData: {
@@ -21,6 +22,7 @@ interface QuickReportProps {
     totalEarned: number;
     totalReadingTime: number;
   };
+  totalBalance?: number; // Add total balance for comparison
 }
 
 type Period = 'lifetime' | 'week' | 'month';
@@ -54,7 +56,8 @@ interface BookInfo {
 export const QuickReport: React.FC<QuickReportProps> = ({ 
   lifetimeData, 
   weekData, 
-  monthData 
+  monthData,
+  totalBalance
 }) => {
   const [selectedPeriod, setSelectedPeriod] = useState<Period>('lifetime');
   const { isDark } = useTheme();
@@ -66,6 +69,26 @@ export const QuickReport: React.FC<QuickReportProps> = ({
   const [bookTitles, setBookTitles] = useState<{ [key: string]: string }>({});
   const [completedBooks, setCompletedBooks] = useState<CompletedBook[]>([]);
   const [totalBooks, setTotalBooks] = useState<number | null>(null);
+  const [currentProfileId, setCurrentProfileId] = useState<string | undefined>(undefined);
+
+  // Load current profile ID
+  useEffect(() => {
+    const loadCurrentProfile = async () => {
+      try {
+        const selectedProfileUid = await AsyncStorage.getItem('selectedProfileUid');
+        if (selectedProfileUid) {
+          const profiles = await getAllProfiles();
+          const selectedProfile = profiles.find(p => p.uid === selectedProfileUid);
+          if (selectedProfile) {
+            setCurrentProfileId(selectedProfile.uid);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading current profile:', error);
+      }
+    };
+    loadCurrentProfile();
+  }, []);
 
   const getDataForPeriod = (period: Period) => {
     switch (period) {
@@ -119,7 +142,7 @@ export const QuickReport: React.FC<QuickReportProps> = ({
     setLoadingBooks(true);
     setError(null);
     try {
-      const chapters = await getUserCompletedChaptersWithScore(user.uid, 0); // show all scores
+      const chapters = await getUserCompletedChaptersWithScore(currentProfileId || '', 0); // show all scores with profile ID
       setBooksData(chapters);
     } catch (e) {
       setError('Failed to load completed books.');
@@ -134,7 +157,8 @@ export const QuickReport: React.FC<QuickReportProps> = ({
       const titles: { [key: string]: string } = {};
       for (const item of booksData) {
         try {
-          const book = await getBookByBookIdAndChapterNumber(item.book_id, item.chapter_number);
+          // Use getBookByChapterId which includes the title field
+          const book = await getBookByChapterId(item.chapter_id);
           const title = book && book.title ? book.title : item.book_id;
           titles[`${item.book_id}-${item.chapter_number}`] = title;
           console.log('Book item:', item, 'Fetched title:', title);
@@ -205,8 +229,8 @@ export const QuickReport: React.FC<QuickReportProps> = ({
   const cards = [
     {
       icon: '📚',
-      label: 'Books Read',
-      value: totalBooks !== null ? `${currentData.booksRead} / ${totalBooks}` : currentData.booksRead,
+      label: 'Books Completed',
+      value: totalBooks !== null ? `${currentData.booksRead} ` : currentData.booksRead,
       onPress: () => {
         setShowBooksModal(true);
         fetchBooksData();
@@ -296,7 +320,7 @@ export const QuickReport: React.FC<QuickReportProps> = ({
               ]}>{card.value}</Text>
             </LinearGradient>
           );
-          if (card.label === 'Books Read') {
+          if (card.label === 'Books Completed') {
             return (
               <Pressable key={card.label} onPress={card.onPress} style={{ flex: 1, marginHorizontal: 4 }}>
                 {CardContent}
@@ -311,6 +335,52 @@ export const QuickReport: React.FC<QuickReportProps> = ({
         })}
       </View>
 
+      {/* Balance vs Earned Comparison - Debug Info */}
+      {totalBalance !== undefined && selectedPeriod === 'lifetime' && (
+        <View style={[
+          styles.comparisonContainer,
+          { 
+            backgroundColor: isDark ? '#23272f' : '#f8fafc',
+            borderColor: isDark ? '#313543' : '#e2e8f0'
+          }
+        ]}>
+          <Text style={[styles.comparisonTitle, { color: isDark ? '#f7fafc' : '#1a202c' }]}>
+            💰 Balance vs Earned Comparison
+          </Text>
+          <View style={styles.comparisonRow}>
+            <Text style={[styles.comparisonLabel, { color: isDark ? '#a0aec0' : '#4a5568' }]}>
+              Total Balance:
+            </Text>
+            <Text style={[styles.comparisonValue, { color: isDark ? '#f7fafc' : '#1a202c' }]}>
+              ${totalBalance.toFixed(2)}
+            </Text>
+          </View>
+          <View style={styles.comparisonRow}>
+            <Text style={[styles.comparisonLabel, { color: isDark ? '#a0aec0' : '#4a5568' }]}>
+              Total Earned:
+            </Text>
+            <Text style={[styles.comparisonValue, { color: isDark ? '#f7fafc' : '#1a202c' }]}>
+              ${currentData.totalEarned.toFixed(2)}
+            </Text>
+          </View>
+          <View style={styles.comparisonRow}>
+            <Text style={[styles.comparisonLabel, { color: isDark ? '#a0aec0' : '#4a5568' }]}>
+              Difference:
+            </Text>
+            <Text style={[
+              styles.comparisonValue, 
+              { 
+                color: Math.abs(totalBalance - currentData.totalEarned) > 0.01 
+                  ? '#dc2626' 
+                  : isDark ? '#f7fafc' : '#1a202c'
+              }
+            ]}>
+              ${(totalBalance - currentData.totalEarned).toFixed(2)}
+            </Text>
+          </View>
+        </View>
+      )}
+
       {/* Books Read Modal */}
       <Modal
         visible={showBooksModal}
@@ -320,7 +390,7 @@ export const QuickReport: React.FC<QuickReportProps> = ({
       >
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: isDark ? '#23272f' : '#fff' }]}> 
-            <Text style={[styles.modalTitle, { color: isDark ? '#f7fafc' : '#1a202c' }]}>Books & Chapters Completed</Text>
+            <Text style={[styles.modalTitle, { color: isDark ? '#f7fafc' : '#1a202c' }]}>Books Completed (Chapter 5)</Text>
             <Pressable style={styles.closeButton} onPress={() => setShowBooksModal(false)}>
               <Text style={{ fontSize: 18, color: isDark ? '#f7fafc' : '#1a202c' }}>✕</Text>
             </Pressable>
@@ -342,7 +412,7 @@ export const QuickReport: React.FC<QuickReportProps> = ({
                     <Text style={[styles.bookMeta, { color: isDark ? '#a0aec0' : '#4a5568' }]}>Completed: {new Date(item.completed_at).toLocaleDateString()}</Text>
                   </View>
                 )}
-                ListEmptyComponent={<Text style={{ color: isDark ? '#f7fafc' : '#1a202c', marginTop: 16 }}>No completed books found.</Text>}
+                ListEmptyComponent={<Text style={{ color: isDark ? '#f7fafc' : '#1a202c', marginTop: 16 }}>No books with completed chapter 5 found.</Text>}
               />
             )}
           </View>
@@ -457,5 +527,31 @@ const styles = StyleSheet.create({
   bookMeta: {
     fontSize: 13,
     marginTop: 2,
+  },
+  comparisonContainer: {
+    marginTop: 16,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  comparisonTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  comparisonRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  comparisonLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  comparisonValue: {
+    fontSize: 14,
+    fontWeight: '600',
   },
 }); 

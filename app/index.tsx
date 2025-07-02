@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, Share, StyleSheet, View, TextInput, Alert, Modal as RNModal, Text as RNText } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, Share, StyleSheet, View, TextInput, Alert, Modal as RNModal, Text as RNText, Image, Animated } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from '@react-navigation/native';
 import React from 'react';
@@ -20,18 +20,18 @@ import {
   getAllSavingsJugs, 
   getSavingsStatistics,
   insertSavingsJug,
-  getAllCompletedChapters,
   getUserCompletedChaptersWithScore,
-  getUserCompletedBooksCount,
-  getQuickReportData,
   getQuickReportDataByPeriod,
   initializeReadingLevel,
-  getCurrentReadingLevel,
+  getCurrentProfileReadingLevel,
   getAllBooks,
-  calculateReadingStreak,
   getReadingStreakDetails,
   isCompletedChaptersTableEmpty,
-  restoreCompletedChapters
+  restoreCompletedChapters,
+  getAllProfiles,
+  diagnoseBalanceEarnedDiscrepancy,
+  fixBalanceSynchronization,
+  getCurrentProfile
 } from '@/services/database';
 import { 
   addMoneyToJug,
@@ -41,8 +41,6 @@ import {
   getCurrentReadingStatus,
   startRandomReading,
   startRandomUncompletedReading,
-  isCurrentlyReading,
-  getCurrentBookDetails,
   getSmartBookDetails,
   updateReading,
   type CurrentReading,
@@ -52,6 +50,21 @@ import { QuickReport } from './components/QuickReport';
 import { Paywall } from './components/Paywall';
 import { HOST_URL } from '@/config/api';
 import { UpgradeModal } from './components/UpgradeModal';
+import { DailyEarningLimitBanner } from './components/DailyEarningLimitBanner';
+import { getDailyEarningLimitInfo, DailyEarningLimitInfo } from '@/services/dailyEarningLimit';
+
+// Avatar images mapping
+const AVATAR_IMAGES: { [key: string]: any } = {
+  '1': require('@/assets/images/avatars/1.png'),
+  '2': require('@/assets/images/avatars/2.png'),
+  '3': require('@/assets/images/avatars/3.png'),
+  '4': require('@/assets/images/avatars/4.png'),
+  '5': require('@/assets/images/avatars/5.png'),
+  '6': require('@/assets/images/avatars/6.png'),
+  '7': require('@/assets/images/avatars/7.png'),
+  '8': require('@/assets/images/avatars/8.png'),
+  '9': require('@/assets/images/avatars/9.png'),
+};
 
 interface SavingsJug {
   id: number;
@@ -60,6 +73,7 @@ interface SavingsJug {
   created: string;
   updated: string;
   emoji?: string;
+  profile_id: string;
 }
 
 const JUG_EMOJIS = [
@@ -100,6 +114,7 @@ export default function HomeScreen() {
     hasNextChapter: boolean;
     nextChapter: Book | null;
   } | null>(null);
+  const [dailyEarningLimitInfo, setDailyEarningLimitInfo] = useState<DailyEarningLimitInfo | null>(null);
   
   // QuickReport data state
   const [quickReportData, setQuickReportData] = useState<{
@@ -146,11 +161,19 @@ export default function HomeScreen() {
   const [showChapterLimitPaywall, setShowChapterLimitPaywall] = useState(false);
   const [showUpgradeModal5, setShowUpgradeModal5] = useState(false);
   const [showUpgradeModal3, setShowUpgradeModal3] = useState(false);
+  
+  // Add state for first-time login paywall
+  const [showFirstTimeLoginPaywall, setShowFirstTimeLoginPaywall] = useState(false);
+
+  // Profile management state
+  const [profiles, setProfiles] = useState<Array<{ id: number; uid: string; name: string; reading_level: string; avatar: string; created: string; updated: string }>>([]);
+  const [selectedProfile, setSelectedProfile] = useState<{ id: number; uid: string; name: string; reading_level: string; avatar: string; created: string; updated: string } | null>(null);
+  const [showProfileModal, setShowProfileModal] = useState(false);
 
   const router = useRouter();
   const { colors, isDark } = useTheme();
   const { isInitialized, isLoading: isDatabaseLoading } = useDatabase();
-  const { user } = useAuth();
+  const { user, isLoading: isAuthLoading } = useAuth();
   const { isPremium, showPaywall } = useRevenueCat();
 
   // Gradient palettes
@@ -189,9 +212,8 @@ export default function HomeScreen() {
   // Load reading level
   const loadReadingLevel = async () => {
     try {
-      const readingLevel = await getCurrentReadingLevel();
+      const readingLevel = await getCurrentProfileReadingLevel();
       setCurrentReadingLevel(readingLevel);
-      console.log('Learner reading level:', readingLevel);
     } catch (error) {
       setCurrentReadingLevel('Explorer');
     }
@@ -231,195 +253,73 @@ export default function HomeScreen() {
 
       // Sort books by chapter count (descending)
       const sortedBooks = Object.values(chaptersPerBook).sort((a, b) => b.chapter_count - a.chapter_count);
-      
-      
-      // Summary statistics
-      const avgChaptersPerBook = allBooks.length / Object.keys(chaptersPerBook).length;
-      const maxChapters = Math.max(...sortedBooks.map(b => b.chapter_count));
-      const minChapters = Math.min(...sortedBooks.map(b => b.chapter_count));
+    
       
     } catch (error) {
-      console.error('Error counting chapters per book:', error);
+      // Error counting chapters per book
     }
   };
 
   // Add function to refresh book count and check paywall
   const refreshChapterCountAndCheckPaywall = async () => {
-    if (user?.uid && !isPremium) {
-      const chaptersCount = await getUserCompletedChaptersWithScore(user.uid);
-      setCompletedChaptersCount(chaptersCount.length);
-      
-      // Show upgrade modal at 5 chapters remaining (5 completed)
-      if (chaptersCount.length === 5) {
-        setShowUpgradeModal5(true);
-      }
-      
-      // Show upgrade modal at 3 chapters remaining (7 completed)
-      if (chaptersCount.length === 7) {
-        setShowUpgradeModal3(true);
-      }
-      
-      // Show paywall if user has completed 10 or more chapters
-      if (chaptersCount.length >= 10) {
-        setShowChapterLimitPaywall(true);
-      }
-    }
+    if (!selectedProfile) return;
+    
+    // Use the centralized refresh function for consistency
+    await refreshAllDataForProfile(selectedProfile);
   };
 
   // Load savings data
   useEffect(() => {
-    if (isInitialized && !isDatabaseLoading) {
-      loadSavingsData();
-      initializeUserReadingLevel(); // Initialize reading level
+    if (isInitialized && !isDatabaseLoading && selectedProfile) {
+      refreshAllDataForProfile(selectedProfile);
     }
-  }, [isInitialized, isDatabaseLoading]);
+  }, [isInitialized, isDatabaseLoading, selectedProfile]);
+
+  // Check for first-time login and show paywall
+  useEffect(() => {
+    const checkFirstTimeLogin = async () => {
+      if (!user?.uid || isPremium) return;
+      
+      try {
+        const firstTimeLoginKey = `firstTimeLogin_${user.uid}`;
+        const hasLoggedInBefore = await AsyncStorage.getItem(firstTimeLoginKey);
+        
+        if (!hasLoggedInBefore) {
+          // Track first-time login event
+          analytics.track('first_time_login_paywall_shown', {
+            userId: user.uid,
+            timestamp: new Date().toISOString()
+          });
+          
+          // This is the first time login, show paywall
+          setShowFirstTimeLoginPaywall(true);
+          // Mark that user has logged in before
+          await AsyncStorage.setItem(firstTimeLoginKey, 'true');
+        }
+      } catch (error) {
+        console.error('Error checking first-time login:', error);
+      }
+    };
+
+    checkFirstTimeLogin();
+  }, [user?.uid, isPremium]);
 
   // Reload all data when screen comes into focus (e.g., after completing a chapter)
   useFocusEffect(
     React.useCallback(() => {
-      if (isInitialized && !isDatabaseLoading) {
-        loadSavingsData();
-        initializeUserReadingLevel(); // Initialize reading level on focus
-        refreshChapterCountAndCheckPaywall(); // Refresh book count and check paywall
+      if (isInitialized && !isDatabaseLoading && selectedProfile) {
+        refreshAllDataForProfile(selectedProfile);
       }
-    }, [isInitialized, isDatabaseLoading])
+    }, [isInitialized, isDatabaseLoading, selectedProfile])
   );
 
   const loadSavingsData = async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-
-      // Check if completed chapters table is empty and restore from API if needed
-      if (user?.uid) {
-        const isEmpty = await isCompletedChaptersTableEmpty();
-        if (isEmpty) {
-          console.log('Completed chapters table is empty, attempting to restore from API...');
-          try {
-            await restoreCompletedChapters(user.uid);
-          } catch (restoreError) {
-            // Continue loading other data even if restoration fails
-          }
-        }
-      }
-
-      // Load all savings jars
-      const allJugs = await getAllSavingsJugs();
-      
-      // If no jars exist, create a generic savings jar
-      if (allJugs.length === 0) {
-        try {
-          await insertSavingsJug({ 
-            name: 'My Piggy Bank', 
-            emoji: '🐷' 
-          });
-          // Reload the jars after creating the generic one
-          const updatedJugs = await getAllSavingsJugs();
-          setJugs(updatedJugs);
-        } catch (createError) {
-          setJugs(allJugs); // Still set the empty array if creation fails
-        }
-      } else {
-        setJugs(allJugs);
-      }
-
-      // Load statistics
-      const stats = await getSavingsStatistics();
-      setStatistics(stats);
-
-      // Load current reading status
-      const readingStatus = await getCurrentReadingStatus();
-      setCurrentReading(readingStatus);
-
-      // Load smart book details if there's an active reading session
-      if (readingStatus) {
-        const smartDetails = await getSmartBookDetails(user?.uid);
-        setSmartBookDetails(smartDetails);
-        
-        // Log smartDetails for debugging next chapter logic
-        console.log('[INDEX] smartBookDetails:', smartDetails);
-        // Set current book based on smart logic
-        if (smartDetails) {
-          if (smartDetails.isCompleted && smartDetails.hasNextChapter) {
-            console.log('[INDEX] User completed current chapter, has next chapter. Setting currentBook to nextChapter:', smartDetails.nextChapter);
-            setCurrentBook(smartDetails.nextChapter);
-          } else if (!smartDetails.isCompleted) {
-            console.log('[INDEX] User has not completed current chapter. Setting currentBook to current chapter:', smartDetails.book);
-            setCurrentBook(smartDetails.book);
-          } else {
-            console.log('[INDEX] No next chapter and current chapter completed. Setting currentBook to null.');
-            setCurrentBook(null);
-          }
-        } else {
-          console.log('[INDEX] No smartBookDetails found. Setting currentBook to null.');
-          setCurrentBook(null);
-        }
-      } else {
-        setSmartBookDetails(null);
-        setCurrentBook(null);
-      }
-
-      // Load all completed chapters
-      const completedChapters = user?.uid 
-        ? await getUserCompletedChaptersWithScore(user.uid)
-        : await getAllCompletedChapters();
-      
-      if (completedChapters.length > 0) {
-        // Summary statistics
-        const avgScore = completedChapters.reduce((sum, chapter) => sum + chapter.score, 0) / completedChapters.length;
-        const totalDuration = completedChapters.reduce((sum, chapter) => sum + chapter.duration, 0);
-        const genres = [...new Set(completedChapters.map(chapter => chapter.genre))];
-      }
-
-      // Load QuickReport data
-      const [lifetimeData, weekData, monthData] = await Promise.all([
-        getQuickReportDataByPeriod(user?.uid, 'lifetime'),
-        getQuickReportDataByPeriod(user?.uid, 'week'),
-        getQuickReportDataByPeriod(user?.uid, 'month')
-      ]);
-      
-      setQuickReportData({
-        lifetime: lifetimeData,
-        week: weekData,
-        month: monthData
-      });
-
-      // Load reading level
-      await loadReadingLevel();
-
-      // Load reading streak data
-      const streakDetails = await getReadingStreakDetails(user?.uid);
-      setReadingStreak(streakDetails);
-
-      // Load completed books count for free users
-      if (user?.uid && !isPremium) {
-        const chaptersCount = await getUserCompletedChaptersWithScore(user.uid);
-        setCompletedChaptersCount(chaptersCount.length);
-        
-        // Show upgrade modal at 5 chapters remaining (5 completed)
-        if (chaptersCount.length === 5) {
-          setShowUpgradeModal5(true);
-        }
-        
-        // Show upgrade modal at 3 chapters remaining (7 completed)
-        if (chaptersCount.length === 7) {
-          setShowUpgradeModal3(true);
-        }
-        
-        // Show paywall if user has completed 10 or more chapters
-        if (chaptersCount.length >= 10) {
-          setShowChapterLimitPaywall(true);
-        }
-      }
-
-      // Count chapters per book and log the results
-      await countChaptersPerBook();
-
-      setIsLoading(false);
-    } catch (error) {
-      setError('Failed to load data');
-      setIsLoading(false);
+    if (!selectedProfile) {
+      return;
     }
+
+    // Use the centralized refresh function
+    await refreshAllDataForProfile(selectedProfile);
   };
 
   const handleCreateJug = async () => {
@@ -432,7 +332,8 @@ export default function HomeScreen() {
       return;
     }
     try {
-      await insertSavingsJug({ name: newJugName.trim(), emoji: selectedEmoji });
+      const profileId = selectedProfile?.uid || user?.uid || '';
+      await insertSavingsJug({ name: newJugName.trim(), emoji: selectedEmoji, profile_id: profileId });
       setNewJugName('');
       setSelectedEmoji('🐷');
       setShowAddModal(false);
@@ -455,7 +356,8 @@ export default function HomeScreen() {
     }
 
     try {
-      await addMoneyToJug(selectedJug.id, amount, transactionName.trim());
+      const profileId = selectedProfile?.uid || user?.uid || '';
+      await addMoneyToJug(selectedJug.id, amount, transactionName.trim(), profileId);
       setTransactionAmount('');
       setTransactionName('');
       setSelectedJug(null);
@@ -484,7 +386,8 @@ export default function HomeScreen() {
     }
 
     try {
-      await removeMoneyFromJug(selectedJug.id, amount, transactionName.trim());
+      const profileId = selectedProfile?.uid || user?.uid || '';
+      await removeMoneyFromJug(selectedJug.id, amount, transactionName.trim(), profileId);
       setTransactionAmount('');
       setTransactionName('');
       setSelectedJug(null);
@@ -497,6 +400,19 @@ export default function HomeScreen() {
 
   const handleStartReading = async () => {
     try {
+      // Check if user has any savings goals
+      if (jugs.length === 0) {
+        Alert.alert(
+          'Create Savings Goal First',
+          'You need to create at least one savings goal before you can start reading. Reading helps you earn money for your goals!',
+          [
+            { text: 'OK', style: 'default' },
+            { text: 'Create Goal', style: 'default', onPress: () => setShowAddModal(true) }
+          ]
+        );
+        return;
+      }
+
       // Check chapter limit for free users
       if (user?.uid && !isPremium && completedChaptersCount >= 10) {
         setShowChapterLimitPaywall(true);
@@ -507,19 +423,21 @@ export default function HomeScreen() {
       
       // Use the new function to get a random uncompleted book
       const book = user?.uid 
-        ? await startRandomUncompletedReading(user.uid)
-        : await startRandomReading(); // Fallback for users without UID
+        ? await startRandomUncompletedReading(user.uid, selectedProfile?.uid)
+        : await startRandomReading(selectedProfile?.uid); // Fallback for users without UID
       
       // Track reading start
-      analytics.track('reading_started', {
+      analytics.trackStartNewBook({
         book_id: book.book_id,
         chapter_name: book.chapter_name,
         genre: book.genre,
-        reading_level: book.reading_level
+        reading_level: book.reading_level,
+        profile_id: selectedProfile?.uid,
+        user_id: user?.uid
       });
       
       // Update current reading and book details
-      const readingStatus = await getCurrentReadingStatus();
+      const readingStatus = await getCurrentReadingStatus(selectedProfile?.uid);
       setCurrentReading(readingStatus);
       setCurrentBook(book);
       
@@ -534,6 +452,19 @@ export default function HomeScreen() {
 
   const handleContinueReading = async () => {
     try {
+      // Check if user has any savings goals
+      if (jugs.length === 0) {
+        Alert.alert(
+          'Create Savings Goal First',
+          'You need to create at least one savings goal before you can continue reading. Reading helps you earn money for your goals!',
+          [
+            { text: 'OK', style: 'default' },
+            { text: 'Create Goal', style: 'default', onPress: () => setShowAddModal(true) }
+          ]
+        );
+        return;
+      }
+
       if (!currentReading || !smartBookDetails) {
         setError('No active reading session found');
         return;
@@ -547,42 +478,18 @@ export default function HomeScreen() {
       
       setIsReadingLoading(true);
       
-      // Get user's reading level
-      const userReadingLevel = await getCurrentReadingLevel();
       let bookToContinue: Book | null = null;
 
-      // If current book's reading level does not match user's, get a book at user's level
-      if (
-        (smartBookDetails.book && smartBookDetails.book.reading_level !== userReadingLevel)
-      ) {
-        // Fetch a book at the user's reading level
-        let newBook: Book | null = null;
-        if (user?.uid) {
-          newBook = await startRandomUncompletedReading(user.uid);
-        } else {
-          newBook = await startRandomReading();
-        }
-        if (newBook) {
-          bookToContinue = newBook;
-          // Start reading this new book
-          await updateReading({
-            book_id: newBook.book_id,
-            chapter_number: newBook.chapter_number,
-            chapter_name: newBook.chapter_name
-          });
-        } else {
-          setError('No book available at your reading level');
-          setIsReadingLoading(false);
-          return;
-        }
-      } else if (smartBookDetails.isCompleted && smartBookDetails.hasNextChapter) {
+      // When continuing reading, always continue with the current book or its next chapter
+      if (smartBookDetails.isCompleted && smartBookDetails.hasNextChapter) {
         // Continue with next chapter
         bookToContinue = smartBookDetails.nextChapter;
         if (bookToContinue) {
           await updateReading({
             book_id: bookToContinue.book_id,
             chapter_number: bookToContinue.chapter_number,
-            chapter_name: bookToContinue.chapter_name
+            chapter_name: bookToContinue.chapter_name,
+            profile_id: selectedProfile?.uid
           });
         }
       } else if (!smartBookDetails.isCompleted) {
@@ -597,9 +504,11 @@ export default function HomeScreen() {
       }
       
       setCurrentBook(bookToContinue);
-      analytics.track('reading_continued', {
+      analytics.trackContinueReading({
         book_id: bookToContinue.book_id,
         chapter_name: bookToContinue.chapter_name,
+        profile_id: selectedProfile?.uid,
+        user_id: user?.uid,
         is_next_chapter: smartBookDetails.isCompleted && smartBookDetails.hasNextChapter
       });
       router.push('/reading');
@@ -652,7 +561,7 @@ export default function HomeScreen() {
       const androidLink = 'https://play.google.com/store/apps/details?id=com.dimporeads';
       
       await Share.share({
-        message: `Check out this amazing savings app! 💰 Manage your savings goals with our jug system. Track your progress and build better financial habits.\n\nDownload now:\n📱 iOS: ${iosLink}\n🤖 Android: ${androidLink}`,
+        message: `Check out this amazing savings app! 💰 Manage your savings goals with our jug system. Track your progress and build better financial habits.\n\nDownload now:\n📱 iOS: ${iosLink}\n Android: ${androidLink}`,
         title: 'Dimpo Reads App',
       });
     } catch (error) {
@@ -682,6 +591,157 @@ export default function HomeScreen() {
     };
     resolveContinueImage();
   }, [currentBook]);
+
+  // Load profiles and selected profiles
+  useEffect(() => {
+    const loadProfilesAndSelected = async () => {
+      try {
+        const allProfiles = await getAllProfiles();
+        setProfiles(allProfiles);
+        let selectedUid = await AsyncStorage.getItem('selectedProfileUid');
+        let selected = allProfiles.find(p => p.uid === selectedUid);
+        if (!selected && allProfiles.length > 0) {
+          selected = allProfiles[0];
+          await AsyncStorage.setItem('selectedProfileUid', selected.uid);
+        }
+        setSelectedProfile(selected || null);
+      } catch (err) {
+        setProfiles([]);
+        setSelectedProfile(null);
+      }
+    };
+    loadProfilesAndSelected();
+  }, []);
+
+  const handleSelectProfile = async (profile: { id: number; uid: string; name: string; reading_level: string; avatar: string; created: string; updated: string }) => {
+    setSelectedProfile(profile);
+    await AsyncStorage.setItem('selectedProfileUid', profile.uid);
+    setShowProfileModal(false);
+    
+    // Immediately trigger data refresh for the new profile
+    await refreshAllDataForProfile(profile);
+  };
+
+  // Function to refresh all data for a specific profile
+  const refreshAllDataForProfile = async (profile: { id: number; uid: string; name: string; reading_level: string; avatar: string; created: string; updated: string }) => {
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      const learnerUid = user?.uid;
+      
+      if (!learnerUid) {
+        return;
+      }
+      const profileId = profile.uid;
+
+      // Check if completed chapters table is empty and restore from API if needed
+      if (user?.uid) {
+        const isEmpty = await isCompletedChaptersTableEmpty();
+        if (isEmpty) {
+          try {
+            await restoreCompletedChapters(user.uid);
+          } catch (restoreError) {
+            // Failed to restore completed chapters
+          }
+        }
+      }
+
+      // Load all savings jars for the selected profile
+      const allJugs = await getAllSavingsJugs(profileId);
+      setJugs(allJugs);
+
+      // Load savings statistics for the selected profile
+      const stats = await getSavingsStatistics(profileId);
+      setStatistics(stats);
+
+      // Load current reading status
+      const readingStatus = await getCurrentReadingStatus(profileId);
+      setCurrentReading(readingStatus);
+
+      // Load smart book details if there's an active reading session
+      if (readingStatus) {
+        const smartDetails = await getSmartBookDetails(learnerUid, profileId);
+        setSmartBookDetails(smartDetails);
+        
+        // Set current book based on smart logic
+        if (smartDetails) {
+          if (smartDetails.isCompleted && smartDetails.hasNextChapter) {
+            setCurrentBook(smartDetails.nextChapter);
+          } else if (!smartDetails.isCompleted) {
+            setCurrentBook(smartDetails.book);
+          } else {
+            setCurrentBook(null);
+          }
+        } else {
+          setCurrentBook(null);
+        }
+      } else {
+        setSmartBookDetails(null);
+        setCurrentBook(null);
+      }
+
+      // Load completed chapters count
+      const completedChapters = await getUserCompletedChaptersWithScore(profileId, 80);
+      setCompletedChaptersCount(completedChapters.length);
+
+      // Load QuickReport data
+      const [lifetimeData, weekData, monthData] = await Promise.all([
+        getQuickReportDataByPeriod('lifetime', profileId),
+        getQuickReportDataByPeriod('week', profileId),
+        getQuickReportDataByPeriod('month', profileId)
+      ]);
+      
+      setQuickReportData({
+        lifetime: lifetimeData,
+        week: weekData,
+        month: monthData
+      });
+
+      // Load reading level
+      await loadReadingLevel();
+
+      // Load reading streak data
+      const streakDetails = await getReadingStreakDetails(profileId);
+      setReadingStreak(streakDetails);
+
+      // Check paywall conditions for free users
+      if (user?.uid && !isPremium) {
+        // Show upgrade modal at 5 chapters remaining (5 completed)
+        if (completedChapters.length === 5) {
+          setShowUpgradeModal5(true);
+        }
+        
+        // Show upgrade modal at 3 chapters remaining (7 completed)
+        if (completedChapters.length === 7) {
+          setShowUpgradeModal3(true);
+        }
+        
+        // Show paywall if user has completed 10 or more chapters
+        if (completedChapters.length >= 10) {
+          setShowChapterLimitPaywall(true);
+        }
+      }
+
+      // Count chapters per book and log the results
+      await countChaptersPerBook();
+
+      // Load daily earning limit info
+      await loadDailyEarningLimitInfo();
+    } catch (error) {
+      setError('Failed to load profile data');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Effect to reload all data when selectedProfile changes
+  // Note: We don't need this effect since we call refreshAllDataForProfile directly in handleSelectProfile
+  // This was causing duplicate calls and potential race conditions
+  // useEffect(() => {
+  //   if (!selectedProfile) return;
+  //   refreshAllDataForProfile(selectedProfile);
+  // }, [selectedProfile]);
 
   const styles = StyleSheet.create({
     container: {
@@ -963,21 +1023,24 @@ export default function HomeScreen() {
       textAlign: 'center',
     },
     actionButtonsContainer: {
-      gap: 16,
+      gap: 20,
       paddingHorizontal: 20,
       marginBottom: 20,
     },
     mainActionButton: {
       backgroundColor: colors.primary,
-      paddingVertical: 16,
-      paddingHorizontal: 24,
-      borderRadius: 12,
+      paddingVertical: 20,
+      paddingHorizontal: 32,
+      borderRadius: 16,
       alignItems: 'center',
       shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.1,
-      shadowRadius: 4,
-      elevation: 3,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.15,
+      shadowRadius: 8,
+      elevation: 6,
+      minHeight: 64,
+      borderWidth: 2,
+      borderColor: 'rgba(255, 255, 255, 0.3)',
     },
     actionButtonPressed: {
       opacity: 0.8,
@@ -985,8 +1048,9 @@ export default function HomeScreen() {
     },
     mainActionButtonText: {
       color: '#fff',
-      fontSize: 16,
-      fontWeight: '600',
+      fontSize: 18,
+      fontWeight: '700',
+      letterSpacing: 0.5,
     },
     shareButton: {
       backgroundColor: colors.surface,
@@ -1326,6 +1390,60 @@ export default function HomeScreen() {
       backgroundColor: 'rgba(255, 255, 255, 0.3)',
       marginHorizontal: 20,
     },
+    addGoalCard: {
+      backgroundColor: colors.surface,
+      borderRadius: 20,
+      padding: 24,
+      marginBottom: 20,
+      borderWidth: 1,
+      borderColor: colors.border,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.1,
+      shadowRadius: 12,
+      elevation: 4,
+    },
+    addGoalContent: {
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    addGoalEmoji: {
+      fontSize: 32,
+      marginBottom: 16,
+      color: colors.text,
+      paddingTop: 18,
+    },
+    addGoalTitle: {
+      fontSize: 20,
+      fontWeight: '700',
+      color: colors.text,
+      marginBottom: 8,
+      textAlign: 'center',
+    },
+    addGoalDescription: {
+      fontSize: 16,
+      color: colors.textSecondary,
+      textAlign: 'center',
+      marginBottom: 24,
+      lineHeight: 24,
+    },
+    addGoalButton: {
+      backgroundColor: colors.primary,
+      paddingVertical: 16,
+      paddingHorizontal: 32,
+      borderRadius: 12,
+      alignItems: 'center',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 3,
+    },
+    addGoalButtonText: {
+      color: '#fff',
+      fontSize: 16,
+      fontWeight: '600',
+    },
   });
 
   // Show database loading if database is not initialized
@@ -1333,9 +1451,22 @@ export default function HomeScreen() {
     return <DatabaseLoading message="Loading app..." />;
   }
 
+  const loadDailyEarningLimitInfo = async () => {
+    try {
+      const profileId = selectedProfile?.uid;
+      const limitInfo = await getDailyEarningLimitInfo(profileId);
+      setDailyEarningLimitInfo(limitInfo);
+    } catch (error) {
+      // Error loading daily earning limit info
+    }
+  };
+
   return (
-    <ScrollView style={{ flex: 1 }}>
-      <Header />
+    <LinearGradient
+      colors={isDark ? ['#23272f', '#3B27C1'] : ['#fceabb', '#f8b500']}
+      style={{ flex: 1 }}
+    >
+      <Header selectedProfile={selectedProfile} />
       <ThemedView style={styles.container}>
         {isLoading ? (
           <View style={styles.loadingContainer}>
@@ -1345,8 +1476,54 @@ export default function HomeScreen() {
         ) : error ? (
           <ThemedText>{error}</ThemedText>
         ) : (
-          <View>
-          
+          <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
+            {/* Profile Card at the Top - Only show if there are multiple profiles */}
+            {profiles.length > 1 && (
+              <View style={{ width: '100%', paddingHorizontal: 0, marginTop: 16, marginBottom: 16 }}>
+                <Pressable
+                  style={{
+                    backgroundColor: isDark ? '#23223b' : '#fff',
+                    borderRadius: 18,
+                    marginHorizontal: 16,
+                    marginTop: 0,
+                    marginBottom: 0,
+                    paddingVertical: 24,
+                    paddingHorizontal: 20,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.08,
+                    shadowRadius: 8,
+                    elevation: 2,
+                  }}
+                  onPress={() => setShowProfileModal(true)}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    {selectedProfile?.avatar ? (
+                      <Image
+                        source={AVATAR_IMAGES[selectedProfile.avatar] || AVATAR_IMAGES['1']}
+                        style={{ width: 48, height: 48, borderRadius: 24, marginRight: 16 }}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <RNText style={{ fontSize: 38, marginRight: 16 }}>👤</RNText>
+                    )}
+                    <View>
+                      <RNText style={{ color: isDark ? '#fff' : '#222', fontWeight: '700', fontSize: 20, marginBottom: 2 }}>
+                        {selectedProfile ? selectedProfile.name : 'No profile selected'}
+                      </RNText>
+                      <RNText style={{ color: '#4F46E5', fontWeight: '600', fontSize: 14 }}>Tap to change reader</RNText>
+                    </View>
+                  </View>
+                  <RNText style={{ color: '#4F46E5', fontWeight: '700', fontSize: 18 }}>Change</RNText>
+                </Pressable>
+              </View>
+            )}
+            
+            
+            
             {/* Combined Balance and Streak Card */}
             <LinearGradient
               colors={TOTAL_BALANCE_GRADIENT}
@@ -1368,12 +1545,14 @@ export default function HomeScreen() {
               <View style={styles.statsSection}>
                 <ThemedText style={styles.combinedStatsEmoji}>🔥</ThemedText>
                 <ThemedText style={[styles.combinedStatsLabel, { color: '#fff' }]}>Reading Streak</ThemedText>
-                <ThemedText style={[styles.combinedStatsValue, { color: '#fff' }]}>
+                <ThemedText style={[styles.combinedStatsValue, { color: '#fff' }]}> 
                   {readingStreak ? `${readingStreak.currentStreak} days` : '0 days'}
                 </ThemedText>
-                
               </View>
             </LinearGradient>
+
+            {/* Daily Earning Limit Banner */}
+            {dailyEarningLimitInfo && <DailyEarningLimitBanner dailyEarningLimitInfo={dailyEarningLimitInfo} />}
 
             {/* Reading Level Card */}
             <View style={styles.readingLevelCard}>
@@ -1430,7 +1609,6 @@ export default function HomeScreen() {
                   </Pressable>
                 </LinearGradient>
               ))}
-              
               {/* Show placeholder when user has only 1 jug */}
               {jugs.length === 1 && (
                 <Pressable
@@ -1454,53 +1632,132 @@ export default function HomeScreen() {
             <View style={styles.actionButtonsContainer}>
               {/* Continue Reading Card or Start New Book Card */}
               {(() => {
-
                 if (currentReading && smartBookDetails) {
-                  if (currentBook) {
+                  if (currentBook && jugs.length > 0) {
                     return (
                       <ContinueReadingCard
                         book={{ ...currentBook, images: continueImage }}
-                        onPress={handleContinueReading}
+                        onPress={jugs.length === 0 ? () => {
+                          Alert.alert(
+                            'Create Savings Goal First',
+                            'You need to create at least one savings goal before you can continue reading. Reading helps you earn money for your goals!',
+                            [
+                              { text: 'OK', style: 'default' },
+                              { text: 'Create Goal', style: 'default', onPress: () => setShowAddModal(true) }
+                            ]
+                          );
+                        } : handleContinueReading}
                         isLoading={isReadingLoading}
                         isNextChapter={smartBookDetails.isCompleted && smartBookDetails.hasNextChapter}
+                        disabled={jugs.length === 0}
                       />
                     );
                   } else {
+                    // Show add goal card when no current book and no savings goals
+                    if (jugs.length === 0) {
+                      return (
+                        <View style={styles.addGoalCard}>
+                          <View style={styles.addGoalContent}>
+                            <ThemedText style={styles.addGoalEmoji}>🎯</ThemedText>
+                            <ThemedText style={styles.addGoalTitle}>Create Your First Savings Goal</ThemedText>
+                            <ThemedText style={styles.addGoalDescription}>
+                              Start your reading journey by creating a savings goal. Every chapter you read earns money for your goals!
+                            </ThemedText>
+                            <Pressable
+                              style={({ pressed }) => [
+                                styles.addGoalButton,
+                                pressed && styles.actionButtonPressed,
+                              ]}
+                              onPress={() => setShowAddModal(true)}
+                              accessibilityRole="button"
+                              accessibilityLabel="Create savings goal"
+                            >
+                              <ThemedText style={styles.addGoalButtonText}>➕ Create Goal</ThemedText>
+                            </Pressable>
+                          </View>
+                        </View>
+                      );
+                    }
+                    
                     return (
+                      <LinearGradient
+                        colors={isDark ? ['#4F46E5', '#7C3AED'] : ['#3B82F6', '#8B5CF6']}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                        style={[
+                          styles.mainActionButton,
+                          isReadingLoading && styles.actionButtonDisabled,
+                        ]}
+                      >
+                        <Pressable
+                          style={({ pressed }) => [
+                            { flex: 1, justifyContent: 'center', alignItems: 'center' },
+                            pressed && styles.actionButtonPressed,
+                          ]}
+                          onPress={handleStartReading}
+                          disabled={isReadingLoading}
+                          accessibilityRole="button"
+                          accessibilityLabel="Start new book"
+                        >
+                          <ThemedText style={styles.mainActionButtonText}>
+                            {isReadingLoading ? '⏳ Loading...' : '🚀 Start New Book'}
+                          </ThemedText>
+                        </Pressable>
+                      </LinearGradient>
+                    );
+                  }
+                } else {
+                  // Show add goal card when no reading session and no savings goals
+                  if (jugs.length === 0) {
+                    return (
+                      <View style={styles.addGoalCard}>
+                        <View style={styles.addGoalContent}>
+                          <ThemedText style={styles.addGoalEmoji}>🎯</ThemedText>
+                          <ThemedText style={styles.addGoalTitle}>Create Your First Savings Goal</ThemedText>
+                          <ThemedText style={styles.addGoalDescription}>
+                            Start your reading journey by creating a savings goal. Every chapter you read earns money for your goals!
+                          </ThemedText>
+                          <Pressable
+                            style={({ pressed }) => [
+                              styles.addGoalButton,
+                              pressed && styles.actionButtonPressed,
+                            ]}
+                            onPress={() => setShowAddModal(true)}
+                            accessibilityRole="button"
+                            accessibilityLabel="Create savings goal"
+                          >
+                            <ThemedText style={styles.addGoalButtonText}>➕ Create Goal</ThemedText>
+                          </Pressable>
+                        </View>
+                      </View>
+                    );
+                  }
+                  
+                  return (
+                    <LinearGradient
+                      colors={isDark ? ['#4F46E5', '#7C3AED'] : ['#3B82F6', '#8B5CF6']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={[
+                        styles.mainActionButton,
+                        isReadingLoading && styles.actionButtonDisabled,
+                      ]}
+                    >
                       <Pressable
                         style={({ pressed }) => [
-                          styles.mainActionButton,
+                          { flex: 1, justifyContent: 'center', alignItems: 'center' },
                           pressed && styles.actionButtonPressed,
-                          isReadingLoading && styles.actionButtonDisabled,
                         ]}
                         onPress={handleStartReading}
                         disabled={isReadingLoading}
                         accessibilityRole="button"
-                        accessibilityLabel="Start new book"
+                        accessibilityLabel="Start reading"
                       >
                         <ThemedText style={styles.mainActionButtonText}>
-                          {isReadingLoading ? '⏳ Loading...' : '📖 Start New Book'}
+                          {isReadingLoading ? '⏳ Loading...' : '🚀 Start New Book'}
                         </ThemedText>
                       </Pressable>
-                    );
-                  }
-                } else {
-                  return (
-                    <Pressable
-                      style={({ pressed }) => [
-                        styles.mainActionButton,
-                        pressed && styles.actionButtonPressed,
-                        isReadingLoading && styles.actionButtonDisabled,
-                      ]}
-                      onPress={handleStartReading}
-                      disabled={isReadingLoading}
-                      accessibilityRole="button"
-                      accessibilityLabel="Start reading"
-                    >
-                      <ThemedText style={styles.mainActionButtonText}>
-                        {isReadingLoading ? '⏳ Loading...' : '📖 Start New Book'}
-                      </ThemedText>
-                    </Pressable>
+                    </LinearGradient>
                   );
                 }
               })()}
@@ -1526,7 +1783,7 @@ export default function HomeScreen() {
                 🔗 Invite Friends
               </ThemedText>
             </Pressable>
-          </View>
+          </ScrollView>
         )}
       </ThemedView>
 
@@ -1723,6 +1980,25 @@ export default function HomeScreen() {
         />
       )}
 
+      {/* First Time Login Paywall */}
+      {showFirstTimeLoginPaywall && (
+        <Paywall
+          onSuccess={() => {
+            setShowFirstTimeLoginPaywall(false);
+            // Refresh data after successful upgrade
+            loadSavingsData();
+          }}
+          onClose={() => {
+            // Track first-time login paywall closed without purchase
+            analytics.track('first_time_login_paywall_closed', {
+              userId: user?.uid,
+              timestamp: new Date().toISOString()
+            });
+            setShowFirstTimeLoginPaywall(false);
+          }}
+        />
+      )}
+
       {/* Upgrade Modal - 5 Chapters Remaining */}
       <UpgradeModal
         visible={showUpgradeModal5}
@@ -1752,7 +2028,76 @@ export default function HomeScreen() {
         remaining={3}
         description="You've completed 7 chapters! Only 3 more free chapters remaining. Don't let your reading journey stop here! Upgrade to Premium for unlimited access."
       />
-    </ScrollView>
+
+      {/* Profile Switcher Modal */}
+      <RNModal
+        visible={showProfileModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowProfileModal(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.25)', justifyContent: 'center', alignItems: 'center' }}>
+          <View style={{ backgroundColor: '#F3F0FF', borderRadius: 28, padding: 28, minWidth: 320, maxWidth: 380, alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.10, shadowRadius: 16, elevation: 6, borderWidth: 2, borderColor: '#A5B4FC' }}>
+            {/* Close button */}
+            <Pressable
+              onPress={() => setShowProfileModal(false)}
+              style={{ position: 'absolute', top: 16, right: 16, zIndex: 10, backgroundColor: '#fff', borderRadius: 16, padding: 6, borderWidth: 1, borderColor: '#E0E7FF' }}
+              accessibilityLabel="Close profile switcher"
+            >
+              <RNText style={{ fontSize: 20, color: '#4F46E5', fontWeight: '700' }}>✖️</RNText>
+            </Pressable>
+            <RNText style={{ fontWeight: '800', fontSize: 28, marginBottom: 4, textAlign: 'center', color: '#4F46E5', letterSpacing: 1 }}>Who's Reading?</RNText>
+            <RNText style={{ fontSize: 16, marginBottom: 18, textAlign: 'center', color: '#6366F1' }}>Tap your name to start your reading adventure!</RNText>
+            {profiles.length === 0 ? (
+              <RNText style={{ color: '#888', fontStyle: 'italic', textAlign: 'center', fontSize: 16 }}>No profiles found.</RNText>
+            ) : (
+              <View style={{ width: '100%', marginBottom: 8 }}>
+                {profiles.map(profile => (
+                  <Pressable
+                    key={profile.uid}
+                    style={{
+                      width: '100%',
+                      backgroundColor: selectedProfile?.uid === profile.uid ? '#A5B4FC' : '#fff',
+                      borderRadius: 16,
+                      paddingVertical: 18,
+                      paddingHorizontal: 20,
+                      marginBottom: 14,
+                      alignItems: 'center',
+                      flexDirection: 'row',
+                      borderWidth: selectedProfile?.uid === profile.uid ? 2 : 1,
+                      borderColor: selectedProfile?.uid === profile.uid ? '#6366F1' : '#E0E7FF',
+                      shadowColor: selectedProfile?.uid === profile.uid ? '#6366F1' : 'transparent',
+                      shadowOpacity: selectedProfile?.uid === profile.uid ? 0.15 : 0,
+                      shadowRadius: 8,
+                      elevation: selectedProfile?.uid === profile.uid ? 2 : 0,
+                    }}
+                    onPress={() => handleSelectProfile(profile)}
+                  >
+                    {profile.avatar ? (
+                      <Image
+                        source={AVATAR_IMAGES[profile.avatar] || AVATAR_IMAGES['1']}
+                        style={{ width: 40, height: 40, borderRadius: 20, marginRight: 16 }}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <RNText style={{ fontSize: 28, marginRight: 16 }}>👤</RNText>
+                    )}
+                    <View style={{ flex: 1 }}>
+                      <RNText style={{ color: '#4F46E5', fontWeight: '700', fontSize: 20 }}>{profile.name}</RNText>
+                      <RNText style={{ color: '#6366F1', fontWeight: '500', fontSize: 14, marginTop: 2 }}>{profile.reading_level}</RNText>
+                    </View>
+                    {selectedProfile?.uid === profile.uid && (
+                      <RNText style={{ marginLeft: 10, fontSize: 18, color: '#6366F1', fontWeight: '700' }}>✓</RNText>
+                    )}
+                  </Pressable>
+                ))}
+              </View>
+            )}
+            <RNText style={{ color: '#6366F1', fontWeight: '600', fontSize: 15, marginTop: 8, textAlign: 'center' }}>Not you? Ask an adult to add your name in the Profile screen!</RNText>
+          </View>
+        </View>
+      </RNModal>
+    </LinearGradient>
   );
 }
 

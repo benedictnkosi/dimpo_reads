@@ -1,4 +1,4 @@
-import { initDatabase, insertBook, insertSavingsJug, insertSavingsTransaction } from './database';
+import { initDatabase, insertBook, insertSavingsJug, insertSavingsTransaction, addDefaultJarsToExistingProfiles, getAllBooks, getAllSavingsJugs } from './database';
 import booksData from '@/assets/books.json';
 import { initializeSavingsWithSampleData } from './savingsService';
 
@@ -22,6 +22,9 @@ export const initializeDatabase = async () => {
     // Load savings data into database
     await loadSavingsIntoDatabase();
     
+    // Add default jars to existing profiles
+    await addDefaultJarsToExistingProfiles();
+    
     console.log('Database initialization completed successfully');
   } catch (error) {
     console.error('Error initializing database:', error);
@@ -42,7 +45,7 @@ const loadBooksIntoDatabase = async () => {
     }
     
     // Insert books from JSON data
-    for (const book of booksData.books) {
+    for (const book of (booksData as any).books) {
       await insertBook({
         book_id: book.book_id,
         title: book.title,
@@ -58,7 +61,7 @@ const loadBooksIntoDatabase = async () => {
       });
     }
     
-    console.log(`Loaded ${booksData.books.length} books into database`);
+    console.log(`Loaded ${(booksData as any).books.length} books into database`);
   } catch (error) {
     console.error('Error loading books into database:', error);
     throw error;
@@ -77,21 +80,11 @@ const loadSavingsIntoDatabase = async () => {
       return;
     }
     
-    // Insert sample savings jars
-    for (const jug of SAMPLE_SAVINGS_JUGS) {
-      await insertSavingsJug({ name: jug.name, emoji: jug.emoji });
-    }
-    
-    // Get the inserted jugs to get their IDs
-    const insertedJugs = await getAllSavingsJugs();
-    
-
+    // Note: We no longer create sample savings jars here since they will be created per profile
+    console.log('Savings jars will be created per profile automatically');
     
   } catch (error) {
     console.error('Error loading savings data into database:', error);
     throw error;
   }
-};
-
-// Import the missing functions from database.ts
-import { getAllBooks, getAllSavingsJugs } from './database'; 
+}; 

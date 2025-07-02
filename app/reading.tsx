@@ -69,7 +69,8 @@ export default function ReadingScreen() {
       setError(null);
 
       // Get current reading status
-      const readingStatus = await getCurrentReadingStatus();
+      const selectedProfileUid = await AsyncStorage.getItem('selectedProfileUid');
+      const readingStatus = await getCurrentReadingStatus(selectedProfileUid || undefined);
       if (!readingStatus) {
         setError('No active reading session found');
         setIsLoading(false);

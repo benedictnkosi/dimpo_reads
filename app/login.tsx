@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { StyleSheet, TouchableOpacity, TextInput, View, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -8,13 +8,37 @@ import Toast from 'react-native-toast-message';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/contexts/AuthContext';
 import Constants from 'expo-constants';
+import { useTheme } from '@/contexts/ThemeContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function Login() {
   const [emailOrPhone, setEmailOrPhone] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [isCheckingFirstLogin, setIsCheckingFirstLogin] = useState(true);
   const { signIn } = useAuth();
+  const { isDark, colors } = useTheme();
+
+  // Check if this is the user's first login
+  useEffect(() => {
+    const checkFirstLogin = async () => {
+      try {
+        const hasLoggedInBefore = await AsyncStorage.getItem('hasLoggedInBefore');
+        if (hasLoggedInBefore === null) {
+          // First time user, set flag and redirect to onboarding
+          await AsyncStorage.setItem('hasLoggedInBefore', 'true');
+          router.replace('/onboarding');
+        }
+      } catch (error) {
+        console.error('Error checking first login status:', error);
+      } finally {
+        setIsCheckingFirstLogin(false);
+      }
+    };
+
+    checkFirstLogin();
+  }, []);
 
   const validateInput = (input: string): { isValid: boolean; email: string } => {
     // Check if input is a valid email
@@ -57,6 +81,9 @@ export default function Login() {
     setIsLoading(true);
     try {
       await signIn(email, password);
+      
+      // Mark that user has logged in before
+      await AsyncStorage.setItem('hasLoggedInBefore', 'true');
     } catch (error: any) {
       console.error('Login error:', error.code, error.message);
 
@@ -79,10 +106,29 @@ export default function Login() {
     }
   };
 
+  // Show loading state while checking first login
+  if (isCheckingFirstLogin) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <LinearGradient
+          colors={isDark ? ['#1B1464', '#2B2F77'] : ['#F8FAFC', '#E2E8F0']}
+          style={styles.gradient}
+        >
+          <View style={styles.loadingContainer}>
+            <ThemedText style={[styles.title, { color: isDark ? '#FFFFFF' : '#1B1464' }]}>🏳️‍🌈 Dimpo Reads</ThemedText>
+            <ThemedText style={[styles.subtitle, { color: isDark ? '#E2E8F0' : '#475569' }]}>
+              Loading...
+            </ThemedText>
+          </View>
+        </LinearGradient>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <LinearGradient
-        colors={['#1B1464', '#2B2F77']}
+        colors={isDark ? ['#1B1464', '#2B2F77'] : ['#F8FAFC', '#E2E8F0']}
         style={styles.gradient}
       >
         <KeyboardAvoidingView
@@ -96,17 +142,17 @@ export default function Login() {
           >
             <View style={styles.content}>
               <View style={styles.header}>
-                <ThemedText style={styles.title}>🏳️‍🌈 Dimpo Reads</ThemedText>
-                <ThemedText style={styles.subtitle}> 
+                <ThemedText style={[styles.title, { color: isDark ? '#FFFFFF' : '#1B1464' }]}>🏳️‍🌈 Dimpo Reads</ThemedText>
+                <ThemedText style={[styles.subtitle, { color: isDark ? '#E2E8F0' : '#475569' }]}> 
                 The more you read, the more you earn.
                 </ThemedText>
               </View>
 
               <View style={styles.form}>
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)', color: isDark ? '#FFFFFF' : '#1B1464', borderColor: isDark ? 'rgba(255,255,255,0.15)' : '#E5E7EB' }]}
                   placeholder="Email or Phone Number"
-                  placeholderTextColor="#94A3B8"
+                  placeholderTextColor={isDark ? '#94A3B8' : '#94A3B8'}
                   value={emailOrPhone}
                   onChangeText={setEmailOrPhone}
                   autoCapitalize="none"
@@ -116,9 +162,9 @@ export default function Login() {
                 />
                 <View style={styles.passwordContainer}>
                   <TextInput
-                    style={[styles.input, styles.passwordInput]}
+                    style={[styles.input, styles.passwordInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)', color: isDark ? '#FFFFFF' : '#1B1464', borderColor: isDark ? 'rgba(255,255,255,0.15)' : '#E5E7EB' }]}
                     placeholder="Password"
-                    placeholderTextColor="#94A3B8"
+                    placeholderTextColor={isDark ? '#94A3B8' : '#94A3B8'}
                     value={password}
                     onChangeText={setPassword}
                     secureTextEntry={!showPassword}
@@ -133,36 +179,36 @@ export default function Login() {
                     <Ionicons
                       name={showPassword ? "eye-off" : "eye"}
                       size={24}
-                      color="#94A3B8"
+                      color={isDark ? '#94A3B8' : '#94A3B8'}
                     />
                   </TouchableOpacity>
                 </View>
                 <TouchableOpacity
-                  style={[styles.button, isLoading && styles.buttonDisabled]}
+                  style={[styles.button, { backgroundColor: isDark ? '#FFFFFF' : '#1B1464' }, isLoading && styles.buttonDisabled]}
                   onPress={handleLogin}
                   disabled={isLoading}
                   testID="login-button"
                 >
-                  <ThemedText style={styles.buttonText}>
+                  <ThemedText style={[styles.buttonText, { color: isDark ? '#1B1464' : '#FFFFFF' }] }>
                     {isLoading ? 'Signing in...' : 'Start Learning →'}
                   </ThemedText>
                 </TouchableOpacity>
 
                 <View style={styles.registerContainer}>
-                  <ThemedText style={styles.helperText}>
+                  <ThemedText style={[styles.helperText, { color: isDark ? '#E2E8F0' : '#475569' }] }>
                     New to Dimpo Reads? Join our community of readers! 🌍
                   </ThemedText>
                   <TouchableOpacity
-                    style={styles.createAccountButton}
+                    style={[styles.createAccountButton, { backgroundColor: isDark ? '#4F46E5' : '#3B82F6' }]}
                     onPress={() => router.push('/onboarding')}
                     testID="create-account-button"
                   >
-                    <ThemedText style={styles.createAccountButtonText}>Create an account</ThemedText>
+                    <ThemedText style={[styles.createAccountButtonText, { color: '#FFFFFF' }]}>Create an account</ThemedText>
                   </TouchableOpacity>
                 </View>
 
                 <View style={styles.forgotPasswordContainer}>
-                  <ThemedText style={styles.helperText}>
+                  <ThemedText style={[styles.helperText, { color: isDark ? '#E2E8F0' : '#475569' }] }>
                     Forgot your password? We'll help you get back to reading! 🔑
                   </ThemedText>
                   <TouchableOpacity
@@ -170,11 +216,11 @@ export default function Login() {
                     onPress={() => router.push('/forgot-password')}
                     testID="forgot-password-button"
                   >
-                    <ThemedText style={styles.linkText}>Reset it here</ThemedText>
+                    <ThemedText style={[styles.linkText, { color: isDark ? '#4F46E5' : '#1B1464' }]}>Reset it here</ThemedText>
                   </TouchableOpacity>
                 </View>
 
-                <View style={styles.deleteAccountContainer}>
+                <View style={[styles.deleteAccountContainer, { borderTopColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)' }] }>
                   <TouchableOpacity
                     style={styles.deleteAccountButton}
                     onPress={() => router.push('https://examquiz.co.za/info/delete-account')}
@@ -199,6 +245,12 @@ const styles = StyleSheet.create({
   gradient: {
     flex: 1,
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
   keyboardAvoidingView: {
     flex: 1,
   },
@@ -221,7 +273,6 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 22,
     fontWeight: 'bold',
-    color: '#FFFFFF',
     marginBottom: 16,
     textAlign: 'center',
     width: '100%',
@@ -229,7 +280,6 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     fontSize: 20,
-    color: '#E2E8F0',
     textAlign: 'center',
     lineHeight: 28,
     paddingHorizontal: 8,
@@ -238,15 +288,13 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   input: {
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
     padding: 16,
     borderRadius: 12,
     fontSize: 16,
-    color: '#FFFFFF',
     marginBottom: 12,
+    borderWidth: 1,
   },
   button: {
-    backgroundColor: '#FFFFFF',
     padding: 16,
     borderRadius: 28,
     alignItems: 'center',
@@ -256,7 +304,6 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   buttonText: {
-    color: '#1B1464',
     fontSize: 18,
     fontWeight: '600',
   },
@@ -266,7 +313,6 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   createAccountButton: {
-    backgroundColor: '#3B82F6',
     paddingVertical: 16,
     paddingHorizontal: 32,
     borderRadius: 28,
@@ -275,7 +321,6 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   createAccountButtonText: {
-    color: '#FFFFFF',
     fontSize: 18,
     fontWeight: '600',
   },
@@ -284,7 +329,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   helperText: {
-    color: '#E2E8F0',
     fontSize: 16,
     textAlign: 'center',
     marginBottom: 8,
@@ -294,7 +338,6 @@ const styles = StyleSheet.create({
     padding: 8,
   },
   linkText: {
-    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
     textDecorationLine: 'underline',
@@ -318,7 +361,6 @@ const styles = StyleSheet.create({
     marginTop: 24,
     alignItems: 'center',
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.1)',
     paddingTop: 24,
   },
   deleteAccountButton: {

@@ -12,6 +12,7 @@ interface ContinueReadingCardProps {
   onPress: () => void;
   isLoading?: boolean;
   isNextChapter?: boolean;
+  disabled?: boolean;
 }
 
 const { width: screenWidth } = Dimensions.get('window');
@@ -20,7 +21,8 @@ export const ContinueReadingCard: React.FC<ContinueReadingCardProps> = ({
   book,
   onPress,
   isLoading = false,
-  isNextChapter = false
+  isNextChapter = false,
+  disabled = false
 }) => {
   const { colors, isDark } = useTheme();
 
@@ -210,14 +212,15 @@ export const ContinueReadingCard: React.FC<ContinueReadingCardProps> = ({
             <Pressable
               style={({ pressed }) => [
                 styles.continueButton,
-                pressed && { opacity: 0.8, transform: [{ scale: 0.98 }] }
+                (pressed || disabled) && { opacity: 0.8, transform: [{ scale: 0.98 }] },
+                disabled && { opacity: 0.5 }
               ]}
               onPress={onPress}
-              disabled={isLoading}
+              disabled={isLoading || disabled}
             >
               <Ionicons name="play" size={16} color="#fff" />
               <ThemedText style={styles.continueButtonText}>
-                Continue
+                {disabled ? 'Create Goal First' : 'Continue'}
               </ThemedText>
             </Pressable>
           </View>

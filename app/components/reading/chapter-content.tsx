@@ -83,11 +83,6 @@ export function ChapterContent({ bookName, chapterName: initialChapterName, chap
         };
         loadReadingLevel();
         
-        // Log chapter view event
-        logAnalyticsEvent('chapter_view', {
-            chapter_name: chapterName,
-            chapter_number: chapterNumber
-        });
     }, []);
 
     // Get reading level emoji and description
@@ -147,7 +142,7 @@ export function ChapterContent({ bookName, chapterName: initialChapterName, chap
         getLearner(user.uid).then(learner => {
             setIsFreeUser((learner as any).subscription === 'free');
         }).catch(error => {
-            console.error('Error fetching learner info:', error);
+            // Error fetching learner info
         });
     }, [user?.uid]);
 
@@ -289,9 +284,9 @@ export function ChapterContent({ bookName, chapterName: initialChapterName, chap
     const processContentWithImages = (content: string): React.ReactNode[] => {
         let workingContent = content;
 
-        // Remove all placeholders from the content
-        workingContent = workingContent.replace(/\[IMAGE_PLACEHOLDER_1\]/g, '');
-        workingContent = workingContent.replace(/\[IMAGE_PLACEHOLDER_2\]/g, '');
+        // Remove all placeholders from the content (including those with descriptions)
+        workingContent = workingContent.replace(/\[IMAGE_PLACEHOLDER_1[^\]]*\]/g, '');
+        workingContent = workingContent.replace(/\[IMAGE_PLACEHOLDER_2[^\]]*\]/g, '');
 
         // Insert [IMAGE_PLACEHOLDER_2] in the middle (after nearest \n\n)
         let contentWithImage2 = workingContent;

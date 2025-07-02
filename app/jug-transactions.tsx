@@ -64,7 +64,6 @@ export default function JugTransactionsScreen() {
   const [showRemoveMoneyModal, setShowRemoveMoneyModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showTransferModal, setShowTransferModal] = useState(false);
-  const [showDepositModal, setShowDepositModal] = useState(false);
   
   // Form states
   const [transactionAmount, setTransactionAmount] = useState('');
@@ -120,7 +119,7 @@ export default function JugTransactionsScreen() {
     }
 
     try {
-      await addMoneyToJug(jug.id, amount, transactionName.trim());
+      await addMoneyToJug(jug.id, amount, transactionName.trim(), '1'); // Using default profile_id
       setTransactionAmount('');
       setTransactionName('');
       setShowAddMoneyModal(false);
@@ -149,7 +148,7 @@ export default function JugTransactionsScreen() {
     }
 
     try {
-      await removeMoneyFromJug(jug.id, amount, transactionName.trim());
+      await removeMoneyFromJug(jug.id, amount, transactionName.trim(), '1'); // Using default profile_id
       setTransactionAmount('');
       setTransactionName('');
       setShowRemoveMoneyModal(false);
@@ -183,7 +182,7 @@ export default function JugTransactionsScreen() {
     }
 
     try {
-      await transferBetweenJugs(jug.id, selectedDestinationJugId, amount, 'Transfer');
+      await transferBetweenJugs(jug.id, selectedDestinationJugId, amount, 'Transfer', '1'); // Using default profile_id
       setTransactionAmount('');
       setSelectedDestinationJugId(null);
       setShowTransferModal(false);
@@ -194,29 +193,7 @@ export default function JugTransactionsScreen() {
     }
   };
 
-  const handleDepositMoney = async () => {
-    if (!jug || !transactionAmount || !transactionName.trim()) {
-      Alert.alert('Error', 'Please fill in all fields');
-      return;
-    }
 
-    const amount = parseFloat(transactionAmount);
-    if (isNaN(amount) || amount <= 0) {
-      Alert.alert('Error', 'Please enter a valid positive amount');
-      return;
-    }
-
-    try {
-      await addMoneyToJug(jug.id, amount, transactionName.trim());
-      setTransactionAmount('');
-      setTransactionName('');
-      setShowDepositModal(false);
-      await loadJugData();
-    } catch (error) {
-      setError('Failed to deposit money');
-      console.error('Error depositing money:', error);
-    }
-  };
 
   const handleDeleteJug = async () => {
     if (!jug) return;
@@ -262,8 +239,8 @@ export default function JugTransactionsScreen() {
   }
 
   return (
-    <ScrollView style={{ flex: 1 }}>
-      <ThemedView style={styles.container}>
+    <ScrollView style={{ flex: 1, backgroundColor: colors.background }}>
+      <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
         {isLoading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.primary} />
@@ -308,67 +285,56 @@ export default function JugTransactionsScreen() {
             <View style={styles.actionButtonsContainer}>
               <Pressable
                 style={({ pressed }) => [
-                  styles.depositButton, 
-                  pressed && styles.depositButtonPressed
-                ]}
-                onPress={() => setShowDepositModal(true)}
-              >
-                <ThemedText style={styles.depositButtonEmoji}>💰</ThemedText>
-                <ThemedText style={styles.depositButtonText}>Deposit</ThemedText>
-              </Pressable>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.transferButton, 
-                  pressed && styles.transferButtonPressed,
-                  (allJugs.length <= 1 || jug.balance <= 0) && styles.transferButtonDisabled
+                  styles.actionButton,
+                  { backgroundColor: colors.primary },
+                  pressed && styles.actionButtonPressed,
+                  (allJugs.length <= 1 || jug.balance <= 0) && { backgroundColor: colors.border }
                 ]}
                 onPress={() => setShowTransferModal(true)}
                 disabled={allJugs.length <= 1 || jug.balance <= 0}
               >
+                <ThemedText style={styles.actionButtonEmoji}>🔄</ThemedText>
                 <ThemedText style={[
-                  styles.transferButtonEmoji,
-                  (allJugs.length <= 1 || jug.balance <= 0) && styles.transferButtonTextDisabled
-                ]}>🔄</ThemedText>
-                <ThemedText style={[
-                  styles.transferButtonText,
-                  (allJugs.length <= 1 || jug.balance <= 0) && styles.transferButtonTextDisabled
+                  styles.actionButtonText,
+                  { color: (allJugs.length <= 1 || jug.balance <= 0) ? colors.textSecondary : '#fff' }
                 ]}>Transfer</ThemedText>
               </Pressable>
               <Pressable
                 style={({ pressed }) => [
-                  styles.withdrawButton, 
-                  pressed && styles.withdrawButtonPressed,
-                  jug.balance <= 0 && styles.withdrawButtonDisabled
+                  styles.actionButton,
+                  { backgroundColor: '#dc2626' },
+                  pressed && styles.actionButtonPressed,
+                  jug.balance <= 0 && { backgroundColor: colors.border }
                 ]}
                 onPress={() => setShowRemoveMoneyModal(true)}
                 disabled={jug.balance <= 0}
               >
+                <ThemedText style={styles.actionButtonEmoji}>💸</ThemedText>
                 <ThemedText style={[
-                  styles.withdrawButtonEmoji,
-                  jug.balance <= 0 && styles.withdrawButtonTextDisabled
-                ]}>💸</ThemedText>
-                <ThemedText style={[
-                  styles.withdrawButtonText,
-                  jug.balance <= 0 && styles.withdrawButtonTextDisabled
+                  styles.actionButtonText,
+                  { color: jug.balance <= 0 ? colors.textSecondary : '#fff' }
                 ]}>Withdraw</ThemedText>
               </Pressable>
             </View>
 
             {/* Transactions List */}
             <View style={styles.transactionsContainer}>
-              <ThemedText style={styles.transactionsTitle}>
+              <ThemedText style={[styles.transactionsTitle, { color: colors.text }]}>
                 Transactions ({transactions.length})
               </ThemedText>
               {transactions.length === 0 ? (
                 <View style={styles.emptyState}>
                   <ThemedText style={styles.emptyStateIcon}>📝</ThemedText>
-                  <ThemedText style={styles.emptyStateText}>No transactions yet</ThemedText>
+                  <ThemedText style={[styles.emptyStateText, { color: colors.textSecondary }]}>No transactions yet</ThemedText>
                 </View>
               ) : (
                 transactions.map((transaction) => (
-                  <View key={transaction.id} style={styles.transactionCard}>
+                  <View key={transaction.id} style={[styles.transactionCard, { 
+                    backgroundColor: colors.card,
+                    borderColor: colors.border 
+                  }]}>
                     <View style={styles.transactionHeader}>
-                      <ThemedText style={styles.transactionName}>
+                      <ThemedText style={[styles.transactionName, { color: colors.text }]}>
                         {transaction.transaction_name}
                       </ThemedText>
                       <ThemedText style={[
@@ -378,7 +344,7 @@ export default function JugTransactionsScreen() {
                         {transaction.amount >= 0 ? '+' : ''}{formatCurrency(transaction.amount)}
                       </ThemedText>
                     </View>
-                    <ThemedText style={styles.transactionDate}>
+                    <ThemedText style={[styles.transactionDate, { color: colors.textSecondary }]}>
                       {formatDate(transaction.date)}
                     </ThemedText>
                   </View>
@@ -394,12 +360,16 @@ export default function JugTransactionsScreen() {
       {/* Add Money Modal */}
       <RNModal visible={showAddMoneyModal} transparent animationType="fade">
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <ThemedText style={styles.modalTitle}>
+          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+            <ThemedText style={[styles.modalTitle, { color: colors.text }]}>
               Add Money to {jug?.name}
             </ThemedText>
             <TextInput
-              style={styles.modalInput}
+              style={[styles.modalInput, { 
+                backgroundColor: colors.background,
+                borderColor: colors.border,
+                color: colors.text
+              }]}
               placeholder="Amount..."
               placeholderTextColor={colors.textSecondary}
               value={transactionAmount}
@@ -407,7 +377,11 @@ export default function JugTransactionsScreen() {
               keyboardType="numeric"
             />
             <TextInput
-              style={styles.modalInput}
+              style={[styles.modalInput, { 
+                backgroundColor: colors.background,
+                borderColor: colors.border,
+                color: colors.text
+              }]}
               placeholder="Transaction name (e.g., Monthly deposit)"
               placeholderTextColor={colors.textSecondary}
               value={transactionName}
@@ -415,20 +389,20 @@ export default function JugTransactionsScreen() {
             />
             <View style={styles.modalButtons}>
               <Pressable 
-                style={[styles.modalButton, styles.modalButtonSecondary]}
+                style={[styles.modalButton, { backgroundColor: colors.border }]}
                 onPress={() => {
                   setShowAddMoneyModal(false);
                   setTransactionAmount('');
                   setTransactionName('');
                 }}
               >
-                <ThemedText style={[styles.modalButtonText, styles.modalButtonTextSecondary]}>Cancel</ThemedText>
+                <ThemedText style={[styles.modalButtonText, { color: colors.text }]}>Cancel</ThemedText>
               </Pressable>
               <Pressable 
-                style={[styles.modalButton, styles.modalButtonPrimary]}
+                style={[styles.modalButton, { backgroundColor: colors.primary }]}
                 onPress={handleAddMoney}
               >
-                <ThemedText style={[styles.modalButtonText, styles.modalButtonTextPrimary]}>Add Money</ThemedText>
+                <ThemedText style={[styles.modalButtonText, { color: '#fff' }]}>Add Money</ThemedText>
               </Pressable>
             </View>
           </View>
@@ -438,12 +412,16 @@ export default function JugTransactionsScreen() {
       {/* Remove Money Modal */}
       <RNModal visible={showRemoveMoneyModal} transparent animationType="fade">
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <ThemedText style={styles.modalTitle}>
+          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+            <ThemedText style={[styles.modalTitle, { color: colors.text }]}>
               Withdraw Savings
             </ThemedText>
             <TextInput
-              style={styles.modalInput}
+              style={[styles.modalInput, { 
+                backgroundColor: colors.background,
+                borderColor: colors.border,
+                color: colors.text
+              }]}
               placeholder="Amount..."
               placeholderTextColor={colors.textSecondary}
               value={transactionAmount}
@@ -451,7 +429,11 @@ export default function JugTransactionsScreen() {
               keyboardType="numeric"
             />
             <TextInput
-              style={styles.modalInput}
+              style={[styles.modalInput, { 
+                backgroundColor: colors.background,
+                borderColor: colors.border,
+                color: colors.text
+              }]}
               placeholder="Transaction name (e.g., Emergency expense)"
               placeholderTextColor={colors.textSecondary}
               value={transactionName}
@@ -459,20 +441,20 @@ export default function JugTransactionsScreen() {
             />
             <View style={styles.modalButtons}>
               <Pressable 
-                style={[styles.modalButton, styles.modalButtonSecondary]}
+                style={[styles.modalButton, { backgroundColor: colors.border }]}
                 onPress={() => {
                   setShowRemoveMoneyModal(false);
                   setTransactionAmount('');
                   setTransactionName('');
                 }}
               >
-                <ThemedText style={[styles.modalButtonText, styles.modalButtonTextSecondary]}>Cancel</ThemedText>
+                <ThemedText style={[styles.modalButtonText, { color: colors.text }]}>Cancel</ThemedText>
               </Pressable>
               <Pressable 
-                style={[styles.modalButton, styles.modalButtonPrimary]}
+                style={[styles.modalButton, { backgroundColor: colors.primary }]}
                 onPress={handleRemoveMoney}
               >
-                <ThemedText style={[styles.modalButtonText, styles.modalButtonTextPrimary]}>Confirm</ThemedText>
+                <ThemedText style={[styles.modalButtonText, { color: '#fff' }]}>Confirm</ThemedText>
               </Pressable>
             </View>
           </View>
@@ -482,12 +464,16 @@ export default function JugTransactionsScreen() {
       {/* Transfer Money Modal */}
       <RNModal visible={showTransferModal} transparent animationType="fade">
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <ThemedText style={styles.modalTitle}>
+          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+            <ThemedText style={[styles.modalTitle, { color: colors.text }]}>
               Transfer from {jug?.name}
             </ThemedText>
             <TextInput
-              style={styles.modalInput}
+              style={[styles.modalInput, { 
+                backgroundColor: colors.background,
+                borderColor: colors.border,
+                color: colors.text
+              }]}
               placeholder="Amount..."
               placeholderTextColor={colors.textSecondary}
               value={transactionAmount}
@@ -497,7 +483,7 @@ export default function JugTransactionsScreen() {
             
             {/* Destination Jug Selection */}
             <View style={styles.jugSelectionContainer}>
-              <ThemedText style={styles.jugSelectionLabel}>Transfer to:</ThemedText>
+              <ThemedText style={[styles.jugSelectionLabel, { color: colors.text }]}>Transfer to:</ThemedText>
               <ScrollView style={styles.jugSelectionScroll} showsVerticalScrollIndicator={false}>
                 {allJugs
                   .filter(otherJug => otherJug.id !== jug?.id)
@@ -506,19 +492,22 @@ export default function JugTransactionsScreen() {
                       key={otherJug.id}
                       style={[
                         styles.jugSelectionItem,
-                        selectedDestinationJugId === otherJug.id && styles.jugSelectionItemSelected
+                        { 
+                          borderColor: colors.border,
+                          backgroundColor: selectedDestinationJugId === otherJug.id ? colors.background : colors.card
+                        }
                       ]}
                       onPress={() => setSelectedDestinationJugId(otherJug.id)}
                     >
                       <ThemedText style={styles.jugSelectionEmoji}>🐷</ThemedText>
                       <View style={styles.jugSelectionInfo}>
-                        <ThemedText style={styles.jugSelectionName}>{otherJug.name}</ThemedText>
-                        <ThemedText style={styles.jugSelectionBalance}>
+                        <ThemedText style={[styles.jugSelectionName, { color: colors.text }]}>{otherJug.name}</ThemedText>
+                        <ThemedText style={[styles.jugSelectionBalance, { color: colors.textSecondary }]}>
                           {formatCurrency(otherJug.balance)}
                         </ThemedText>
                       </View>
                       {selectedDestinationJugId === otherJug.id && (
-                        <Ionicons name="checkmark-circle" size={24} color="#3b82f6" />
+                        <Ionicons name="checkmark-circle" size={24} color={colors.primary} />
                       )}
                     </Pressable>
                   ))}
@@ -527,84 +516,42 @@ export default function JugTransactionsScreen() {
 
             <View style={styles.modalButtons}>
               <Pressable 
-                style={[styles.modalButton, styles.modalButtonSecondary]}
+                style={[styles.modalButton, { backgroundColor: colors.border }]}
                 onPress={() => {
                   setShowTransferModal(false);
                   setTransactionAmount('');
                   setSelectedDestinationJugId(null);
                 }}
               >
-                <ThemedText style={[styles.modalButtonText, styles.modalButtonTextSecondary]}>Cancel</ThemedText>
+                <ThemedText style={[styles.modalButtonText, { color: colors.text }]}>Cancel</ThemedText>
               </Pressable>
               <Pressable 
-                style={[styles.modalButton, styles.modalButtonPrimary]}
+                style={[styles.modalButton, { backgroundColor: colors.primary }]}
                 onPress={handleTransferMoney}
               >
-                <ThemedText style={[styles.modalButtonText, styles.modalButtonTextPrimary]}>Transfer</ThemedText>
+                <ThemedText style={[styles.modalButtonText, { color: '#fff' }]}>Transfer</ThemedText>
               </Pressable>
             </View>
           </View>
         </View>
       </RNModal>
 
-      {/* Deposit Money Modal */}
-      <RNModal visible={showDepositModal} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <ThemedText style={styles.modalTitle}>
-              Deposit to {jug?.name}
-            </ThemedText>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="Amount..."
-              placeholderTextColor={colors.textSecondary}
-              value={transactionAmount}
-              onChangeText={setTransactionAmount}
-              keyboardType="numeric"
-            />
-            <TextInput
-              style={styles.modalInput}
-              placeholder="Transaction name (e.g., Chores completed, Birthday money)"
-              placeholderTextColor={colors.textSecondary}
-              value={transactionName}
-              onChangeText={setTransactionName}
-            />
-            <View style={styles.modalButtons}>
-              <Pressable 
-                style={[styles.modalButton, styles.modalButtonSecondary]}
-                onPress={() => {
-                  setShowDepositModal(false);
-                  setTransactionAmount('');
-                  setTransactionName('');
-                }}
-              >
-                <ThemedText style={[styles.modalButtonText, styles.modalButtonTextSecondary]}>Cancel</ThemedText>
-              </Pressable>
-              <Pressable 
-                style={[styles.modalButton, styles.modalButtonPrimary]}
-                onPress={handleDepositMoney}
-              >
-                <ThemedText style={[styles.modalButtonText, styles.modalButtonTextPrimary]}>Deposit</ThemedText>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </RNModal>
+
 
       {/* Delete Jug Modal */}
       <RNModal visible={showDeleteModal} transparent animationType="fade">
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <ThemedText style={styles.modalTitle}>Delete Savings Jar</ThemedText>
-            <ThemedText style={styles.modalText}>
+          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+            <ThemedText style={[styles.modalTitle, { color: colors.text }]}>Delete Savings Jar</ThemedText>
+            <ThemedText style={[styles.modalText, { color: colors.text }]}>
               Are you sure you want to delete "{jug?.name}"? This will also delete all its transactions.
             </ThemedText>
             <View style={styles.modalButtons}>
               <Pressable 
-                style={[styles.modalButton, styles.modalButtonSecondary]}
+                style={[styles.modalButton, { backgroundColor: colors.border }]}
                 onPress={() => setShowDeleteModal(false)}
               >
-                <ThemedText style={[styles.modalButtonText, styles.modalButtonTextSecondary]}>Cancel</ThemedText>
+                <ThemedText style={[styles.modalButtonText, { color: colors.text }]}>Cancel</ThemedText>
               </Pressable>
               <Pressable 
                 style={[styles.modalButton, { backgroundColor: '#dc2626' }]}
@@ -624,7 +571,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     paddingTop: 20,
-    backgroundColor: '#F7F8FA',
   },
   loadingContainer: {
     flex: 1,
@@ -712,8 +658,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     gap: 8,
   },
-  depositButton: {
-    backgroundColor: '#059669',
+  actionButton: {
     flex: 1,
     paddingVertical: 20,
     borderRadius: 14,
@@ -724,83 +669,18 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 3,
   },
-  depositButtonPressed: {
+  actionButtonPressed: {
     opacity: 0.8,
     transform: [{ scale: 0.98 }],
   },
-  depositButtonEmoji: {
+  actionButtonEmoji: {
     fontSize: 24,
     marginBottom: 8,
   },
-  depositButtonText: {
-    color: '#fff',
+  actionButtonText: {
     fontSize: 16,
     fontWeight: '700',
     letterSpacing: 0.5,
-  },
-  transferButton: {
-    backgroundColor: '#3b82f6',
-    flex: 1,
-    paddingVertical: 20,
-    borderRadius: 14,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.12,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  transferButtonPressed: {
-    opacity: 0.8,
-    transform: [{ scale: 0.98 }],
-  },
-  transferButtonDisabled: {
-    backgroundColor: '#e5e7eb',
-  },
-  transferButtonEmoji: {
-    fontSize: 24,
-    marginBottom: 8,
-  },
-  transferButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  transferButtonTextDisabled: {
-    color: '#9ca3af',
-  },
-  withdrawButton: {
-    backgroundColor: '#dc2626',
-    flex: 1,
-    paddingVertical: 20,
-    borderRadius: 14,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.12,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  withdrawButtonPressed: {
-    opacity: 0.8,
-    transform: [{ scale: 0.98 }],
-  },
-  withdrawButtonDisabled: {
-    backgroundColor: '#e5e7eb',
-  },
-  withdrawButtonEmoji: {
-    fontSize: 24,
-    marginBottom: 8,
-  },
-  withdrawButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  withdrawButtonTextDisabled: {
-    color: '#9ca3af',
   },
   transactionsContainer: {
     paddingHorizontal: 20,
@@ -820,15 +700,12 @@ const styles = StyleSheet.create({
   },
   emptyStateText: {
     fontSize: 16,
-    color: '#6b7280',
   },
   transactionCard: {
-    backgroundColor: '#fff',
     padding: 16,
     borderRadius: 12,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#e5e7eb',
   },
   transactionHeader: {
     flexDirection: 'row',
@@ -847,7 +724,6 @@ const styles = StyleSheet.create({
   },
   transactionDate: {
     fontSize: 14,
-    color: '#6b7280',
   },
   modalOverlay: {
     flex: 1,
@@ -856,7 +732,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalContent: {
-    backgroundColor: '#fff',
     padding: 24,
     borderRadius: 16,
     width: '90%',
@@ -873,9 +748,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   modalInput: {
-    backgroundColor: '#f9fafb',
     borderWidth: 1,
-    borderColor: '#e5e7eb',
     borderRadius: 8,
     padding: 12,
     marginBottom: 16,
@@ -893,18 +766,9 @@ const styles = StyleSheet.create({
   modalButtonPrimary: {
     backgroundColor: '#3b82f6',
   },
-  modalButtonSecondary: {
-    backgroundColor: '#e5e7eb',
-  },
   modalButtonText: {
     fontSize: 16,
     fontWeight: '600',
-  },
-  modalButtonTextPrimary: {
-    color: '#fff',
-  },
-  modalButtonTextSecondary: {
-    color: '#374151',
   },
   jugSelectionContainer: {
     marginBottom: 20,
@@ -922,11 +786,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 12,
     borderWidth: 1,
-    borderColor: '#e5e7eb',
     borderRadius: 8,
-  },
-  jugSelectionItemSelected: {
-    backgroundColor: '#f3f4f6',
   },
   jugSelectionEmoji: {
     fontSize: 24,
@@ -941,6 +801,5 @@ const styles = StyleSheet.create({
   },
   jugSelectionBalance: {
     fontSize: 14,
-    color: '#6b7280',
   },
 }); 

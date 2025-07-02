@@ -5,12 +5,14 @@ import { ThemedView } from '@/components/ThemedView';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useDatabase } from '@/hooks/useDatabase';
 import { DatabaseLoading } from '@/components/DatabaseLoading';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { 
   getAllSavingsJugs, 
   getSavingsStatistics, 
   getAllSavingsTransactions,
   insertSavingsJug,
-  deleteSavingsJug
+  deleteSavingsJug,
+  getAllProfiles
 } from '@/services/database';
 import { 
   initializeSavingsWithSampleData,
@@ -43,6 +45,7 @@ export default function SavingsTestScreen() {
   const [summary, setSummary] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [currentProfileId, setCurrentProfileId] = useState<string>('');
   
   // Form states
   const [newJugName, setNewJugName] = useState('');
@@ -53,11 +56,30 @@ export default function SavingsTestScreen() {
   const { colors } = useTheme();
   const { isInitialized, isLoading: isDatabaseLoading } = useDatabase();
 
+  // Load current profile ID
   useEffect(() => {
-    if (isInitialized && !isDatabaseLoading) {
+    const loadCurrentProfile = async () => {
+      try {
+        const selectedProfileUid = await AsyncStorage.getItem('selectedProfileUid');
+        if (selectedProfileUid) {
+          const profiles = await getAllProfiles();
+          const selectedProfile = profiles.find(p => p.uid === selectedProfileUid);
+          if (selectedProfile) {
+            setCurrentProfileId(selectedProfile.uid);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading current profile:', error);
+      }
+    };
+    loadCurrentProfile();
+  }, []);
+
+  useEffect(() => {
+    if (isInitialized && !isDatabaseLoading && currentProfileId) {
       loadSavingsData();
     }
-  }, [isInitialized, isDatabaseLoading]);
+  }, [isInitialized, isDatabaseLoading, currentProfileId]);
 
   const loadSavingsData = async () => {
     try {
@@ -65,19 +87,19 @@ export default function SavingsTestScreen() {
       setError(null);
 
       // Load all savings jars
-      const allJugs = await getAllSavingsJugs();
+      const allJugs = await getAllSavingsJugs(currentProfileId);
       setJugs(allJugs);
 
       // Load all transactions
-      const allTransactions = await getAllSavingsTransactions();
+      const allTransactions = await getAllSavingsTransactions(currentProfileId);
       setTransactions(allTransactions);
 
       // Load statistics
-      const stats = await getSavingsStatistics();
+      const stats = await getSavingsStatistics(currentProfileId);
       setStatistics(stats);
 
       // Load summary
-      const savingsSummary = await getSavingsSummary();
+      const savingsSummary = await getSavingsSummary(currentProfileId);
       setSummary(savingsSummary);
 
       setLoading(false);
@@ -91,7 +113,7 @@ export default function SavingsTestScreen() {
   const handleInitializeSavings = async () => {
     try {
       setLoading(true);
-      await initializeSavingsWithSampleData();
+      await initializeSavingsWithSampleData(currentProfileId);
       await loadSavingsData();
     } catch (error) {
       setError('Failed to initialize savings');
@@ -108,7 +130,7 @@ export default function SavingsTestScreen() {
     }
 
     try {
-      await insertSavingsJug({ name: newJugName.trim(), emoji: '💰' });
+      await insertSavingsJug({ name: newJugName.trim(), emoji: '💰', profile_id: currentProfileId });
       setNewJugName('');
       await loadSavingsData();
     } catch (error) {
@@ -153,7 +175,7 @@ export default function SavingsTestScreen() {
     }
 
     try {
-      await addMoneyToJug(selectedJugId, amount, transactionName.trim());
+      await addMoneyToJug(selectedJugId, amount, transactionName.trim(), currentProfileId);
       setTransactionAmount('');
       setTransactionName('');
       setSelectedJugId(null);
@@ -177,7 +199,7 @@ export default function SavingsTestScreen() {
     }
 
     try {
-      await removeMoneyFromJug(selectedJugId, amount, transactionName.trim());
+      await removeMoneyFromJug(selectedJugId, amount, transactionName.trim(), currentProfileId);
       setTransactionAmount('');
       setTransactionName('');
       setSelectedJugId(null);
@@ -390,7 +412,7 @@ export default function SavingsTestScreen() {
 
           {/* Create New Jug */}
           <View style={styles.section}>
-            <ThemedText style={styles.sectionTitle}>➕ Create New Savings Jar</ThemedText>
+            <ThemedText style={styles.sectionTitle}>➕ Create New Savings Goal</ThemedText>
             <View style={styles.formSection}>
               <TextInput
                 style={styles.input}
@@ -400,7 +422,7 @@ export default function SavingsTestScreen() {
                 onChangeText={setNewJugName}
               />
               <Pressable style={styles.button} onPress={handleCreateJug}>
-                <ThemedText style={styles.buttonText}>Create Jug</ThemedText>
+                <ThemedText style={styles.buttonText}>Create Goal</ThemedText>
               </Pressable>
             </View>
           </View>

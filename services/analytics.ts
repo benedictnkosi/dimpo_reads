@@ -2,6 +2,16 @@ import { Mixpanel } from 'mixpanel-react-native';
 
 const MIXPANEL_TOKEN = '44c9d6952845f26c209c7e42a6e8b6b3'; // Replace with your Mixpanel token
 
+interface ReadingEventProperties {
+    book_id: string;
+    chapter_name: string;
+    genre?: string;
+    reading_level?: string;
+    profile_id?: string;
+    is_next_chapter?: boolean;
+    user_id?: string;
+}
+
 class Analytics {
     private static instance: Analytics;
     private mixpanel: Mixpanel;
@@ -47,11 +57,86 @@ class Analytics {
         }
     }
 
-    public async setUserProperties(properties: Record<string, any>): Promise<void> {
+    /**
+     * Track when a user starts reading a new book
+     */
+    public async trackStartNewBook(properties: ReadingEventProperties): Promise<void> {
         try {
-            await this.mixpanel.people.set(properties);
+            await this.track('reading_started', {
+                ...properties,
+                event_type: 'new_book',
+                timestamp: new Date().toISOString()
+            });
         } catch (error) {
-            console.error('[Mixpanel] Error setting user properties:', error);
+            console.error('[Analytics] Error tracking start new book event:', error);
+        }
+    }
+
+    /**
+     * Track when a user continues reading an existing book/chapter
+     */
+    public async trackContinueReading(properties: ReadingEventProperties): Promise<void> {
+        try {
+            await this.track('reading_continued', {
+                ...properties,
+                event_type: 'continue_reading',
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('[Analytics] Error tracking continue reading event:', error);
+        }
+    }
+
+    /**
+     * Track when a user completes a chapter
+     */
+    public async trackChapterCompleted(properties: ReadingEventProperties & {
+        score?: number;
+        time_spent?: number;
+        words_read?: number;
+    }): Promise<void> {
+        try {
+            await this.track('chapter_completed', {
+                ...properties,
+                event_type: 'chapter_completed',
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('[Analytics] Error tracking chapter completed event:', error);
+        }
+    }
+
+    /**
+     * Track reading session start
+     */
+    public async trackReadingSessionStart(properties: ReadingEventProperties): Promise<void> {
+        try {
+            await this.track('reading_session_started', {
+                ...properties,
+                event_type: 'session_start',
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('[Analytics] Error tracking reading session start:', error);
+        }
+    }
+
+    /**
+     * Track reading session end
+     */
+    public async trackReadingSessionEnd(properties: ReadingEventProperties & {
+        session_duration?: number;
+        pages_read?: number;
+        words_read?: number;
+    }): Promise<void> {
+        try {
+            await this.track('reading_session_ended', {
+                ...properties,
+                event_type: 'session_end',
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('[Analytics] Error tracking reading session end:', error);
         }
     }
 }

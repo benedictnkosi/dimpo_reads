@@ -5,11 +5,13 @@ import { ThemedView } from '@/components/ThemedView';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useDatabase } from '@/hooks/useDatabase';
 import { DatabaseLoading } from '@/components/DatabaseLoading';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { 
   getAllSavingsJugs, 
   getSavingsStatistics,
   insertSavingsJug,
-  deleteSavingsJug
+  deleteSavingsJug,
+  getAllProfiles
 } from '@/services/database';
 import { 
   addMoneyToJug,
@@ -33,6 +35,7 @@ export default function SavingsScreen() {
   const [showAddMoneyModal, setShowAddMoneyModal] = useState(false);
   const [showRemoveMoneyModal, setShowRemoveMoneyModal] = useState(false);
   const [selectedJug, setSelectedJug] = useState<SavingsJug | null>(null);
+  const [currentProfileId, setCurrentProfileId] = useState<string>('');
   
   // Form states
   const [newJugName, setNewJugName] = useState('');
@@ -42,11 +45,38 @@ export default function SavingsScreen() {
   const { colors } = useTheme();
   const { isInitialized, isLoading: isDatabaseLoading } = useDatabase();
 
+  // Load current profile ID
   useEffect(() => {
-    if (isInitialized && !isDatabaseLoading) {
+    const loadCurrentProfile = async () => {
+      try {
+        const selectedProfileUid = await AsyncStorage.getItem('selectedProfileUid');
+        
+        if (selectedProfileUid) {
+          const profiles = await getAllProfiles();
+          
+          const selectedProfile = profiles.find(p => p.uid === selectedProfileUid);
+          
+          if (selectedProfile) {
+            setCurrentProfileId(selectedProfile.uid);
+          }
+        }
+      } catch (error) {
+        // Error loading current profile
+      }
+    };
+    loadCurrentProfile();
+  }, []);
+
+  // Track currentProfileId changes
+  useEffect(() => {
+    // currentProfileId changed
+  }, [currentProfileId]);
+
+  useEffect(() => {
+    if (isInitialized && !isDatabaseLoading && currentProfileId) {
       loadSavingsData();
     }
-  }, [isInitialized, isDatabaseLoading]);
+  }, [isInitialized, isDatabaseLoading, currentProfileId]);
 
   const loadSavingsData = async () => {
     try {
@@ -54,18 +84,17 @@ export default function SavingsScreen() {
       setError(null);
 
       // Load all savings goals
-      const allJugs = await getAllSavingsJugs();
+      const allJugs = await getAllSavingsJugs(currentProfileId);
       setJugs(allJugs);
 
       // Load statistics
-      const stats = await getSavingsStatistics();
+      const stats = await getSavingsStatistics(currentProfileId);
       setStatistics(stats);
 
       setLoading(false);
     } catch (error) {
       setError('Failed to load savings data');
       setLoading(false);
-      console.error('Error loading savings data:', error);
     }
   };
 
@@ -75,14 +104,26 @@ export default function SavingsScreen() {
       return;
     }
 
+    if (!currentProfileId) {
+      Alert.alert('Error', 'No profile selected');
+      return;
+    }
+
     try {
-      await insertSavingsJug({ name: newJugName.trim(), emoji: '💰' });
+      const jugData = {
+        name: newJugName.trim(),
+        emoji: '💰',
+        profile_id: currentProfileId
+      };
+      
+      const jugId = await insertSavingsJug(jugData);
+      
       setNewJugName('');
       setShowAddModal(false);
+      
       await loadSavingsData();
     } catch (error) {
       setError('Failed to create savings goal');
-      console.error('Error creating savings goal:', error);
     }
   };
 
@@ -101,7 +142,6 @@ export default function SavingsScreen() {
               await loadSavingsData();
             } catch (error) {
               setError('Failed to delete savings goal');
-              console.error('Error deleting savings goal:', error);
             }
           }
         }
@@ -122,7 +162,7 @@ export default function SavingsScreen() {
     }
 
     try {
-      await addMoneyToJug(selectedJug.id, amount, transactionName.trim());
+      await addMoneyToJug(selectedJug.id, amount, transactionName.trim(), currentProfileId);
       setTransactionAmount('');
       setTransactionName('');
       setSelectedJug(null);
@@ -130,7 +170,6 @@ export default function SavingsScreen() {
       await loadSavingsData();
     } catch (error) {
       setError('Failed to add money to jug');
-      console.error('Error adding money to jug:', error);
     }
   };
 
@@ -152,7 +191,7 @@ export default function SavingsScreen() {
     }
 
     try {
-      await removeMoneyFromJug(selectedJug.id, amount, transactionName.trim());
+      await removeMoneyFromJug(selectedJug.id, amount, transactionName.trim(), currentProfileId);
       setTransactionAmount('');
       setTransactionName('');
       setSelectedJug(null);
@@ -160,7 +199,6 @@ export default function SavingsScreen() {
       await loadSavingsData();
     } catch (error) {
       setError('Failed to remove money from jug');
-      console.error('Error removing money from jug:', error);
     }
   };
 

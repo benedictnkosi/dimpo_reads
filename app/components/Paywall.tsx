@@ -32,9 +32,20 @@ export function Paywall({ onSuccess, onClose, offerings }: PaywallProps) {
                 throw new Error('No offerings available');
             }
 
-            const result = await RevenueCatUI.presentPaywall({
-                offering: currentOfferings,
-                displayCloseButton: true,
+            // Ensure presentPaywall is called on the main thread
+            let result;
+            result = await new Promise((resolve, reject) => {
+                requestAnimationFrame(async () => {
+                    try {
+                        const res = await RevenueCatUI.presentPaywall({
+                            offering: currentOfferings,
+                            displayCloseButton: true,
+                        });
+                        resolve(res);
+                    } catch (err) {
+                        reject(err);
+                    }
+                });
             });
 
             // Check if purchase was successful

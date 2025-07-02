@@ -7,11 +7,12 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useSound } from '../../contexts/SoundContext';
 import { analytics } from '@/services/analytics';
 import { Ionicons } from '@expo/vector-icons';
-import { getBookByChapterId, insertChapterCompletion, getAllSavingsJugs, hasUserCompletedChapter, initializeReadingLevel, getCurrentReadingLevel, getNextChapterByReadingLevel, getCurrentReading } from '@/services/database';
+import { getBookByChapterId, insertChapterCompletion, getAllSavingsJugs, hasUserCompletedChapter, hasUserCompletedChapterWithScore, initializeReadingLevel, getCurrentReadingLevel, getNextChapterByReadingLevel, getCurrentReading, getAllProfiles, updateCurrentProfileReadingLevel, getUserCompletedChaptersWithScore } from '@/services/database';
+import { getDailyEarningLimitInfo, canEarnMoreToday } from '@/services/dailyEarningLimit';
 import { submitCompletedChapter } from '@/services/api';
 import { addMoneyToJug } from '@/services/savingsService';
 import { updateReading } from '@/services/readingService';
-import ConfettiCannon from 'react-native-confetti-cannon';
+import ConfettiCannon from '@felipecsl/react-native-confetti-cannon';
 import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
@@ -131,6 +132,10 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, readingDura
     const [readingLevelPromoted, setReadingLevelPromoted] = useState<number | null>(null);
     const [readingLevelDemoted, setReadingLevelDemoted] = useState<number | null>(null);
     const [readingSpeed, setReadingSpeed] = useState<number>(0);
+    const [currentProfileId, setCurrentProfileId] = useState<string>('');
+    const [chapterNumber, setChapterNumber] = useState<number | null>(null);
+    const [dailyEarningLimitInfo, setDailyEarningLimitInfo] = useState<any>(null);
+    const [canEarnToday, setCanEarnToday] = useState<boolean>(true);
 
     // Initialize reading level if not set
     const initializeUserReadingLevel = async () => {
@@ -140,6 +145,25 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, readingDura
             // ... existing code ...
         }
     };
+
+    // Load current profile ID
+    useEffect(() => {
+        const loadCurrentProfile = async () => {
+            try {
+                const selectedProfileUid = await AsyncStorage.getItem('selectedProfileUid');
+                if (selectedProfileUid) {
+                    const profiles = await getAllProfiles();
+                    const selectedProfile = profiles.find(p => p.uid === selectedProfileUid);
+                    if (selectedProfile) {
+                        setCurrentProfileId(selectedProfile.uid);
+                    }
+                }
+                    } catch (error) {
+            // Error loading current profile
+        }
+        };
+        loadCurrentProfile();
+    }, []);
 
     useEffect(() => {
         if (chapterId) {
@@ -165,6 +189,24 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, readingDura
             initializeUserReadingLevel(); // Initialize reading level
         }
     }, [chapterId, readingDuration, wordCount]);
+
+    // Check daily earning limit when profile ID or agreed amount changes
+    useEffect(() => {
+        if (currentProfileId && agreedAmount) {
+            checkDailyEarningLimit();
+        }
+    }, [currentProfileId, agreedAmount]);
+
+    // Fetch chapter number when quiz is available
+    useEffect(() => {
+        if (quiz && chapterNumber === null) {
+            getBookByChapterId(quiz.chapterId).then(bookData => {
+                if (bookData && typeof bookData.chapter_number === 'number') {
+                    setChapterNumber(bookData.chapter_number);
+                }
+            });
+        }
+    }, [quiz, chapterNumber]);
 
     async function fetchQuiz() {
         if (!chapterId) {
@@ -204,12 +246,15 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, readingDura
                         correctAnswer: typeof q.correct === 'number' ? q.options[q.correct] : q.correct_answer || null
                     }))
                 });
-                // Log quiz answers to console for debugging
-                console.log('Quiz answers loaded:', shuffledQuestions.map((q: any) => ({
-                    question: q.question,
-                    options: q.options,
-                    correctAnswer: typeof q.correct === 'number' ? q.options[q.correct] : q.correct_answer || null
-                })));
+                
+                // Log correct answers for debugging
+                console.log('=== QUIZ CORRECT ANSWERS ===');
+                shuffledQuestions.forEach((q: any, index: number) => {
+                    const correctAnswer = typeof q.correct === 'number' ? q.options[q.correct] : q.correct_answer || 'Unknown';
+                    console.log(`Question ${index + 1}: ${correctAnswer}`);
+                });
+                console.log('===========================');
+                
                 // Fetch chapter image if available
             } else {
                 setError('Quiz not available for this chapter.');
@@ -221,14 +266,32 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, readingDura
         }
     }
 
-    async function completeChapter(percentage: number, readingDuration: number) {
+    async function completeChapter(percentage: number, readingDuration: number, isReview: boolean = false) {
         if (!user?.uid || !chapterId) return;
 
-        // Check if user has already completed this chapter
-        const alreadyCompleted = await hasUserCompletedChapter(user.uid, chapterId);
-        if (alreadyCompleted) {
+        // Get selected profile from AsyncStorage
+        let selectedProfileUid = await AsyncStorage.getItem('selectedProfileUid');
+        let profileId: number | undefined = undefined;
+        if (selectedProfileUid) {
+            const profiles = await getAllProfiles();
+            const selectedProfile = profiles.find(p => p.uid === selectedProfileUid);
+            if (selectedProfile) {
+                profileId = selectedProfile.id;
+            }
+        }
+
+        // For review readings, we still want to record completion to unlock next chapter
+        // but we don't want to create duplicate records. Check if already completed.
+        const alreadyCompleted = await hasUserCompletedChapterWithScore(user.uid, chapterId, 0, profileId?.toString());
+        if (alreadyCompleted && !isReview) {
             return;
         }
+        
+        // For review readings, we still want to update progress even if already completed
+        // but we don't need to insert a new completion record
+        const shouldInsertCompletion = !alreadyCompleted || !isReview;
+        
+        console.log(`Chapter completion - isReview: ${isReview}, alreadyCompleted: ${alreadyCompleted}, shouldInsert: ${shouldInsertCompletion}`);
 
         setIsCompleting(true);
         try {
@@ -242,23 +305,53 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, readingDura
                 throw new Error('Book data not found');
             }
 
-            // Insert into local database (readingSpeed is actually duration in DB)
-            await insertChapterCompletion({
-                learnerUid: user.uid,
-                chapterId,
-                readingSpeed: readingDuration || 0,
-                score,
-            });
+            // Get selected profile from AsyncStorage
+            let selectedProfileUid = await AsyncStorage.getItem('selectedProfileUid');
+            let profileId: string | undefined = undefined;
+            if (selectedProfileUid) {
+                const profiles = await getAllProfiles();
+                const selectedProfile = profiles.find(p => p.uid === selectedProfileUid);
+                if (selectedProfile) {
+                    profileId = selectedProfile.uid;
+                }
+            }
 
-            // Submit to API only if book title is available
-            if (bookData.title) {
+            // Insert into local database (readingSpeed is actually duration in DB)
+            if (!profileId) {
+                throw new Error('Profile ID is required for chapter completion');
+            }
+            
+            // Only insert completion record if not already completed or not a review
+            if (shouldInsertCompletion) {
+                await insertChapterCompletion({
+                    learnerUid: user.uid,
+                    chapterId,
+                    readingSpeed: readingDuration || 0,
+                    score,
+                    profile_id: profileId,
+                });
+            }
+
+            // Query for all completed chapters for the current profile
+            try {
+                if (!profileId) {
+                    return;
+                }
+                const completedChapters = await getUserCompletedChaptersWithScore(profileId, 80);
+            } catch (error) {
+                // Error fetching completed chapters
+            }
+
+            // Submit to API only if book title is available and not a review
+            if (bookData.title && shouldInsertCompletion) {
                 try {
                     await submitCompletedChapter({
                         learnerUid: user.uid,
                         chapterName: bookData.chapter_name,
                         bookTitle: bookData.title,
-                        readingSpeed: readingDuration || 0,
+                        duration: readingDuration || 0,
                         score,
+                        profileUid: profileId || '',
                     });
                 } catch (apiError) {
                     // ... existing code ...
@@ -292,7 +385,9 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, readingDura
             const nextChapter = await getNextChapterByReadingLevel(
                 currentReading.book_id, 
                 currentReading.chapter_number, 
-                userReadingLevel
+                userReadingLevel,
+                user?.uid,
+                currentProfileId
             );
             if (nextChapter) {
                 // Update reading progress to next chapter
@@ -312,7 +407,7 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, readingDura
     // Load savings jars for jar selection
     const loadSavingsJugs = async () => {
         try {
-            const jugs = await getAllSavingsJugs();
+            const jugs = await getAllSavingsJugs(currentProfileId);
             setSavingsJugs(jugs);
         } catch (error) {
             // ... existing code ...
@@ -331,6 +426,20 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, readingDura
         }
     };
 
+    // Check daily earning limit
+    const checkDailyEarningLimit = async () => {
+        try {
+            const limitInfo = await getDailyEarningLimitInfo(currentProfileId);
+            setDailyEarningLimitInfo(limitInfo);
+            
+            // Check if user can earn the agreed amount today
+            const canEarn = await canEarnMoreToday(parseFloat(agreedAmount), currentProfileId);
+            setCanEarnToday(canEarn);
+        } catch (error) {
+            setCanEarnToday(true); // Default to true on error
+        }
+    };
+
     // Check and promote reading level if conditions are met
     const checkAndPromoteReadingLevel = async (percentage: number) => {
         try {
@@ -343,11 +452,10 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, readingDura
                 if (currentLevelNum < 3) {
                     const newLevelNum = currentLevelNum + 1;
                     const newLevelText = getTextLevel(newLevelNum);
-                    await AsyncStorage.setItem('readingLevel', newLevelText);
+                    await updateCurrentProfileReadingLevel(newLevelText);
                     // Ensure the new reading level is committed before proceeding
                     await AsyncStorage.flushGetRequests?.();
-                    const confirmedLevel = await AsyncStorage.getItem('readingLevel');
-                    console.log('Confirmed new reading level after promotion:', confirmedLevel);
+                    const confirmedLevel = await getCurrentReadingLevel();
                     // Set promotion state for UI display
                     setReadingLevelPromoted(newLevelNum);
                     // Track reading level promotion
@@ -360,7 +468,6 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, readingDura
                         comprehensionPercentage: percentage,
                         trigger: 'speed_and_comprehension'
                     });
-                    console.log(`🎉 Reading level promoted from ${currentLevelText} to ${newLevelText}!`);
                     return newLevelNum;
                 }
             }
@@ -383,7 +490,7 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, readingDura
                 if (currentLevelNum > 1) {
                     const newLevelNum = currentLevelNum - 1;
                     const newLevelText = getTextLevel(newLevelNum);
-                    await AsyncStorage.setItem('readingLevel', newLevelText);
+                    await updateCurrentProfileReadingLevel(newLevelText);
                     setReadingLevelDemoted(newLevelNum);
                     
                     analytics.track('reading_level_demoted', {
@@ -395,7 +502,6 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, readingDura
                         comprehensionPercentage: percentage,
                         trigger: 'speed_and_comprehension'
                     });
-                    console.log(`⬇️ Reading level demoted from ${currentLevelText} to ${newLevelText}!`);
                     return newLevelNum;
                 }
             }
@@ -408,11 +514,11 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, readingDura
 
     // Add money to selected jug
     const handleAddMoneyToJug = async () => {
-        if (!selectedJugId) return;
+        if (!selectedJugId || !currentProfileId) return;
         setIsAddingMoney(true);
         try {
             const amount = parseFloat(agreedAmount);
-            await addMoneyToJug(selectedJugId, amount, quiz?.chapterName || 'Chapter quiz');
+            await addMoneyToJug(selectedJugId, amount, quiz?.chapterName || 'Chapter quiz', currentProfileId);
             // Play money sound only if sound is enabled
             if (soundEnabled) {
                 const { sound } = await Audio.Sound.createAsync(
@@ -428,8 +534,7 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, readingDura
                 setShowConfetti(false);
                 // Ensure the new reading level is committed before redirecting
                 await AsyncStorage.flushGetRequests?.();
-                const confirmedLevel = await AsyncStorage.getItem('readingLevel');
-                console.log('Redirecting with reading level:', confirmedLevel);
+                const confirmedLevel = await getCurrentReadingLevel();
                 // Redirect to home page instead of just closing the quiz
                 router.replace('/');
             }, 2200); // Confetti duration + buffer
@@ -501,17 +606,17 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, readingDura
                 setReadingLevelDemoted(null);
             }
             
-            // Check if user earned money (80% or higher) AND hasn't completed this chapter before
-            if (percentage >= 80 && !hasCompletedChapter) {
-                completeChapter(percentage, readingDuration || 0);
+            // Check if user earned money (80% or higher) AND hasn't completed this chapter before AND hasn't reached daily earning limit
+            
+            if (percentage >= 80 && !hasCompletedChapter && canEarnToday) {
+                completeChapter(percentage, readingDuration || 0, false);
                 setHasEarnedMoney(true);
                 loadSavingsJugs();
                 setShowJarSelection(true);
             } else {
-                // If they haven't completed before, complete the chapter now
-                if (!hasCompletedChapter) {
-                    completeChapter(percentage, readingDuration || 0);
-                }
+                // Always complete the chapter to ensure progress is recorded
+                // For review readings, this ensures next chapter can be unlocked
+                completeChapter(percentage, readingDuration || 0, hasCompletedChapter);
                 setShowResults(true);
             }
 
@@ -539,13 +644,31 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, readingDura
 
     // Check if user has already completed this chapter
     const checkIfUserCompletedChapter = async () => {
-        if (!user?.uid || !chapterId) return;
+        if (!user?.uid || !chapterId) {
+            return;
+        }
         
         try {
-            const completed = await hasUserCompletedChapter(user.uid, chapterId);
+            // Get selected profile from AsyncStorage
+            let selectedProfileUid = await AsyncStorage.getItem('selectedProfileUid');
+            let profileId: number | undefined = undefined;
+            let profileName = 'Unknown';
+            
+            if (selectedProfileUid) {
+                const profiles = await getAllProfiles();
+                const selectedProfile = profiles.find(p => p.uid === selectedProfileUid);
+                if (selectedProfile) {
+                    profileId = selectedProfile.id;
+                    profileName = selectedProfile.name;
+                }
+            }
+            
+            // Check for any completion (not just 80%+ scores) to prevent earning on retries
+            const completed = await hasUserCompletedChapterWithScore(user.uid, chapterId, 0, selectedProfileUid || undefined);
+            
             setHasCompletedChapter(completed);
         } catch (error) {
-            // ... existing code ...
+            setHasCompletedChapter(false); // Default to false on error
         }
     };
 
@@ -642,19 +765,6 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, readingDura
         const percentage = (score / quiz.quiz.length) * 100;
         let resultEmoji, resultMessage, resultColor, shouldRetry, resultSubText;
 
-        // Find chapter_number from quiz state (if available)
-        // quiz.chapterId is the DB id, not chapter_number, so we need to fetch it from bookData
-        const [chapterNumber, setChapterNumber] = useState<number | null>(null);
-        useEffect(() => {
-            if (quiz && chapterNumber === null) {
-                getBookByChapterId(quiz.chapterId).then(bookData => {
-                    if (bookData && typeof bookData.chapter_number === 'number') {
-                        setChapterNumber(bookData.chapter_number);
-                    }
-                });
-            }
-        }, [quiz]);
-
         if (percentage >= 90) {
             resultEmoji = '🎉';
             resultMessage = 'Amazing! You and Dimpo are totally in sync with the story!';
@@ -726,7 +836,7 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, readingDura
                 )}
                 
                 {/* Show money earned message if applicable */}
-                {hasEarnedMoney && percentage >= 80 && (
+                {hasEarnedMoney && percentage >= 80 && canEarnToday && (
                     <View style={{ 
                         backgroundColor: isDark ? 'rgba(34,197,94,0.1)' : 'rgba(34,197,94,0.1)', 
                         padding: 12, 
@@ -811,6 +921,28 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, readingDura
                     </View>
                 )}
                 
+                {/* Show message if user has reached daily earning limit */}
+                {percentage >= 80 && !hasCompletedChapter && !canEarnToday && dailyEarningLimitInfo && (
+                    <View style={{ 
+                        backgroundColor: isDark ? 'rgba(239,68,68,0.1)' : 'rgba(239,68,68,0.1)', 
+                        padding: 12, 
+                        borderRadius: 8, 
+                        marginBottom: 12,
+                        borderWidth: 1,
+                        borderColor: isDark ? 'rgba(239,68,68,0.3)' : 'rgba(239,68,68,0.3)'
+                    }}>
+                        <Text style={{ 
+                            color: isDark ? '#F87171' : '#DC2626', 
+                            fontSize: 14, 
+                            fontWeight: '600', 
+                            textAlign: 'center' 
+                        }}>
+                            💰 You've reached your daily earning limit of {dailyEarningLimitInfo.limit} coins! 
+                            You earned {dailyEarningLimitInfo.earnedToday} coins today. Come back tomorrow for more rewards!
+                        </Text>
+                    </View>
+                )}
+                
                 <View style={{ width: '100%', height: 1, backgroundColor: isDark ? '#23242A' : '#E0E7FF', marginVertical: 12 }} />
                 <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginBottom: 8, gap: 24 }}>
                     <View style={{ alignItems: 'center' }}>
@@ -836,8 +968,13 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, readingDura
                             // Close quiz and return to reading
                             onClose?.(true);
                         } else {
-                            // Just close the quiz for good scores
-                            onClose?.(false);
+                            // If user has already completed this chapter, redirect to home
+                            if (hasCompletedChapter) {
+                                router.replace('/');
+                            } else {
+                                // Just close the quiz for good scores on first completion
+                                onClose?.(false);
+                            }
                         }
                     }}
                     disabled={isCompleting}
@@ -876,6 +1013,27 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, readingDura
                                 <Text style={[styles.resultMessage, { color: colors.textSecondary, marginBottom: 16, fontSize: 16, textAlign: 'center' }]}>
                                     You scored {percentage.toFixed(0)}% on the quiz! Choose a savings jar to add your reward.
                                 </Text>
+                                
+                                {/* Daily earning limit info */}
+                                {dailyEarningLimitInfo && (
+                                    <View style={{ 
+                                        backgroundColor: isDark ? 'rgba(59,130,246,0.1)' : 'rgba(59,130,246,0.1)', 
+                                        padding: 10, 
+                                        borderRadius: 8, 
+                                        marginTop: 8,
+                                        borderWidth: 1,
+                                        borderColor: isDark ? 'rgba(59,130,246,0.3)' : 'rgba(59,130,246,0.3)'
+                                    }}>
+                                        <Text style={{ 
+                                            color: isDark ? '#60A5FA' : '#2563EB', 
+                                            fontSize: 12, 
+                                            fontWeight: '600', 
+                                            textAlign: 'center' 
+                                        }}>
+                                            📊 Daily Progress: {dailyEarningLimitInfo.earnedToday + parseFloat(agreedAmount)} / {dailyEarningLimitInfo.limit}
+                                        </Text>
+                                    </View>
+                                )}
                             </View>
 
                             {/* Show reading level promotion message if applicable */}

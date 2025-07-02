@@ -9,23 +9,37 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import React, { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, TextInput, TouchableOpacity, View, Alert } from 'react-native';
+import { ScrollView, StyleSheet, TextInput, TouchableOpacity, View, Alert, Image } from 'react-native';
 import Modal from 'react-native-modal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
 import { Paywall } from './components/Paywall';
 import { useSound } from './contexts/SoundContext';
-import { clearAllCompletedChapters, getCurrentReadingLevel } from '@/services/database';
+import { clearAllCompletedChapters, getCurrentReadingLevel, getAllProfiles, insertProfile, deleteProfile, dropAllTables, getCurrentProfileReadingLevel, updateCurrentProfileReadingLevel, addDefaultJarsToExistingProfiles } from '@/services/database';
 import { reloadBooksFromJSON } from '@/services/bookService';
 import { ContractAmountSelector } from './components/ContractAmountSelector';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { clearLearnerReadingTable } from '@/services/database';
+import { DailyLimitSelector } from './components/DailyLimitSelector';
 
 interface ProfileInfo {
   name: string;
   email?: string;
   subscription?: 'free' | 'premium';
 }
+
+// Avatar images mapping
+const AVATAR_IMAGES: { [key: string]: any } = {
+  '1': require('@/assets/images/avatars/1.png'),
+  '2': require('@/assets/images/avatars/2.png'),
+  '3': require('@/assets/images/avatars/3.png'),
+  '4': require('@/assets/images/avatars/4.png'),
+  '5': require('@/assets/images/avatars/5.png'),
+  '6': require('@/assets/images/avatars/6.png'),
+  '7': require('@/assets/images/avatars/7.png'),
+  '8': require('@/assets/images/avatars/8.png'),
+  '9': require('@/assets/images/avatars/9.png'),
+};
 
 export default function ProfileScreen() {
   const { user } = useAuth();
@@ -46,6 +60,16 @@ export default function ProfileScreen() {
   const [agreedAmount, setAgreedAmount] = useState('5');
   const [currentReadingLevel, setCurrentReadingLevel] = useState<string>('');
   const [isClearingLearnerReading, setIsClearingLearnerReading] = useState(false);
+  const [isAddingDefaultJars, setIsAddingDefaultJars] = useState(false);
+  // Profile management state
+  const [profiles, setProfiles] = useState<Array<{ id: number; uid: string; name: string; reading_level: string; avatar: string; created: string; updated: string }>>([]);
+  const [newProfileName, setNewProfileName] = useState('');
+  const [isAddingProfile, setIsAddingProfile] = useState(false);
+  const [profileError, setProfileError] = useState('');
+  const [isRefreshingDb, setIsRefreshingDb] = useState(false);
+  const [showDailyLimitSelector, setShowDailyLimitSelector] = useState(false);
+  const [showAddProfileModal, setShowAddProfileModal] = useState(false);
+  const [selectedAvatar, setSelectedAvatar] = useState('1');
 
   // Reading level constants
   const READING_LEVELS = {
@@ -79,7 +103,7 @@ export default function ProfileScreen() {
       if (currentLevelNum < 3) {
         const newLevelNum = currentLevelNum + 1;
         const newLevelText = getTextLevel(newLevelNum);
-        await AsyncStorage.setItem('readingLevel', newLevelText);
+        await updateCurrentProfileReadingLevel(newLevelText);
         setCurrentReadingLevel(newLevelText);
         Toast.show({
           type: 'success',
@@ -121,7 +145,7 @@ export default function ProfileScreen() {
       if (currentLevelNum > 1) {
         const newLevelNum = currentLevelNum - 1;
         const newLevelText = getTextLevel(newLevelNum);
-        await AsyncStorage.setItem('readingLevel', newLevelText);
+        await updateCurrentProfileReadingLevel(newLevelText);
         setCurrentReadingLevel(newLevelText);
         Toast.show({
           type: 'success',
@@ -196,7 +220,7 @@ export default function ProfileScreen() {
 
   const loadReadingLevel = async () => {
     try {
-      const readingLevel = await getCurrentReadingLevel();
+      const readingLevel = await getCurrentProfileReadingLevel();
       console.log('Reading level loaded:', readingLevel);
       setCurrentReadingLevel(readingLevel);
     } catch (error) {
@@ -206,10 +230,79 @@ export default function ProfileScreen() {
     }
   };
 
+  const loadProfiles = async () => {
+    try {
+      const allProfiles = await getAllProfiles();
+      setProfiles(allProfiles);
+    } catch (err) {
+      console.error('Failed to load profiles:', err);
+    }
+  };
+
+  const handleAddProfile = async () => {
+    if (!newProfileName.trim()) {
+      setProfileError('Please enter a name');
+      return;
+    }
+    
+    if (profiles.length >= 4) {
+      setProfileError('Maximum 4 profiles allowed');
+      return;
+    }
+    
+    setProfileError('');
+    setIsAddingProfile(true);
+    try {
+      // Generate a random UID for local-only profiles
+      const uid = 'local_' + Math.random().toString(36).substring(2, 12);
+      await insertProfile({ 
+        uid, 
+        name: newProfileName.trim(),
+        avatar: selectedAvatar
+      });
+      setNewProfileName('');
+      setSelectedAvatar('1');
+      setShowAddProfileModal(false);
+      await loadProfiles();
+      
+      // Show success message about default jar creation
+      Toast.show({
+        type: 'success',
+        text1: 'Profile Created',
+        text2: `${newProfileName.trim()} now has a default "Reading Fund" jar!`,
+        position: 'top',
+        topOffset: 60,
+        visibilityTime: 4000,
+        autoHide: true
+      });
+    } catch (err) {
+      setProfileError('Failed to add profile');
+      console.error('Failed to add profile:', err);
+    } finally {
+      setIsAddingProfile(false);
+    }
+  };
+
+  const handleDeleteProfile = async (uid: string) => {
+    try {
+      await deleteProfile(uid);
+      await loadProfiles();
+    } catch (err) {
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to delete profile',
+        position: 'bottom',
+      });
+      console.error('Failed to delete profile:', err);
+    }
+  };
+
   useEffect(() => {
     fetchLearnerData();
     loadAgreedAmount();
     loadReadingLevel();
+    loadProfiles();
   }, [user?.email]);
 
   const handleContractAmountChange = (newAmount: string) => {
@@ -389,6 +482,11 @@ export default function ProfileScreen() {
     );
   };
 
+  const handleDailyLimitChange = async (newLimit: number) => {
+    // The daily earning limit info will be refreshed automatically when the user returns to the main screen
+    console.log('Daily earning limit updated to:', newLimit);
+  };
+
   return (
     <LinearGradient
       colors={isDark ? ['#1E1E1E', '#121212'] : ['#FFFFFF', '#F8FAFC', '#F1F5F9']}
@@ -396,7 +494,7 @@ export default function ProfileScreen() {
       start={{ x: 0, y: 0 }}
       end={{ x: 0, y: 1 }}
     >
-       <Header />
+      <Header />
       <ScrollView
         style={styles.container}
         nestedScrollEnabled={true}
@@ -405,7 +503,7 @@ export default function ProfileScreen() {
        
 
         <ThemedView style={styles.content}>
-          <ThemedView style={[styles.profileCard, { backgroundColor: isDark ? colors.card : '#FFFFFF' }]}>
+          <ThemedView style={[styles.profileCard, { backgroundColor: isDark ? colors.card || '#23263a' : '#FFFFFF' }]}>
 
             <View style={styles.profileHeader}>
               <View style={[styles.avatarContainer, { backgroundColor: colors.primary }]}>
@@ -424,9 +522,84 @@ export default function ProfileScreen() {
             </View>
           </ThemedView>
 
-
-
-
+          {/* Profile Management Section */}
+          <ThemedView style={[styles.settingsCard, { backgroundColor: isDark ? colors.card : '#FFFFFF' }]}> 
+            <ThemedText style={[styles.settingsTitle, { color: colors.text }]}>👤 Manage Profiles</ThemedText>
+            {/* Add new profile button */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+              <TouchableOpacity
+                style={{
+                  backgroundColor: profiles.length >= 4 ? '#9CA3AF' : '#4F46E5',
+                  paddingVertical: 12,
+                  paddingHorizontal: 20,
+                  borderRadius: 8,
+                  opacity: (isAddingProfile || profiles.length >= 4) ? 0.5 : 1,
+                }}
+                onPress={() => setShowAddProfileModal(true)}
+                disabled={isAddingProfile || profiles.length >= 4}
+              >
+                <ThemedText style={{ color: '#fff', fontWeight: '600' }}>
+                  {profiles.length >= 4 ? 'Limit Reached' : '+ Add Profile'}
+                </ThemedText>
+              </TouchableOpacity>
+            </View>
+            <ThemedText style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 8 }}>
+              {profiles.length}/4 profiles
+            </ThemedText>
+            {profileError ? (
+              <ThemedText style={{ color: '#DC2626', marginBottom: 8 }}>{profileError}</ThemedText>
+            ) : null}
+            {/* List profiles */}
+            {profiles.length === 0 ? (
+              <ThemedText style={{ color: colors.textSecondary, fontStyle: 'italic' }}>No profiles found.</ThemedText>
+            ) : (
+              <View style={styles.profileGrid}>
+                {profiles.map((profile, idx) => (
+                  <View
+                    key={profile.uid}
+                    style={[
+                      styles.profileCardGrid,
+                      { 
+                        marginRight: idx % 2 === 0 ? '4%' : 0,
+                        marginBottom: Math.floor(idx / 2) < Math.floor((profiles.length - 1) / 2) ? 12 : 0,
+                        backgroundColor: isDark ? colors.card || '#23263a' : '#F3F4F6',
+                        ...(isDark && { backgroundColor: '#23263a', borderWidth: 1, borderColor: '#31344b' }),
+                      }
+                    ]}
+                  >
+                    <View style={styles.profileCardHeader}>
+                      <View style={[styles.profileAvatarGrid, { backgroundColor: isDark ? '#6366F1' : '#6366F1' }]}>
+                        <Image
+                          source={AVATAR_IMAGES[profile.avatar] || AVATAR_IMAGES['1']}
+                          style={styles.profileAvatarImage}
+                        />
+                      </View>
+                      <TouchableOpacity
+                        onPress={() => {
+                          Alert.alert(
+                            'Delete Profile',
+                            `Are you sure you want to delete the profile "${profile.name}"? This action cannot be undone.`,
+                            [
+                              { text: 'Cancel', style: 'cancel' },
+                              { text: 'Delete', style: 'destructive', onPress: () => handleDeleteProfile(profile.uid) }
+                            ]
+                          );
+                        }}
+                        style={styles.deleteIconButton}
+                        accessibilityLabel={`Delete ${profile.name}`}
+                      >
+                        <ThemedText style={[styles.deleteIconText, { color: isDark ? '#F87171' : '#DC2626' }]}>🗑️</ThemedText>
+                      </TouchableOpacity>
+                    </View>
+                    <ThemedText style={[styles.profileNameGrid, { color: isDark ? '#fff' : '#22223b' }]} numberOfLines={1} ellipsizeMode="tail">{profile.name}</ThemedText>
+                    <ThemedText style={[styles.profileReadingLevel, { color: colors.textSecondary }]} numberOfLines={1} ellipsizeMode="tail">
+                      {profile.reading_level}
+                    </ThemedText>
+                  </View>
+                ))}
+              </View>
+            )}
+          </ThemedView>
 
           {/* Reading Levels Card */}
           <ThemedView style={[styles.settingsCard, { backgroundColor: isDark ? colors.card : '#FFFFFF' }]}>
@@ -496,31 +669,44 @@ export default function ProfileScreen() {
             </View>
           </ThemedView>
 
-          {/* Contract Amount Card */}
-          <ThemedView style={[styles.settingsCard, { backgroundColor: isDark ? colors.card : '#FFFFFF' }]}>
-            <ThemedText style={[styles.settingsTitle, { color: colors.text }]}>
-              💰 Contract Amount
-            </ThemedText>
-            <View style={styles.settingRow}>
-              <View style={styles.settingInfo}>
-                <ThemedText style={[styles.settingLabel, { color: colors.text }]}>
-                  Earnings per Chapter
-                </ThemedText>
-                <ThemedText style={[styles.settingDescription, { color: colors.textSecondary }]}>
-                  Currently earning {agreedAmount} per completed chapter
-                </ThemedText>
+          {/* Earnings Controls Card (Parent for Contract Amount and Daily Earning Limit) */}
+          <ThemedView style={[styles.settingsCard, { backgroundColor: isDark ? colors.card : '#FFFFFF' }]}> 
+            <ThemedText style={[styles.settingsTitle, { color: colors.text }]}>💸 Earnings Controls</ThemedText>
+            {/* Contract Amount Section */}
+            <View style={{ marginBottom: 24 }}>
+              <View style={styles.settingRow}>
+                <View style={styles.settingInfo}>
+                  <ThemedText style={[styles.settingLabel, { color: colors.text }]}>Earnings per Chapter</ThemedText>
+                  <ThemedText style={[styles.settingDescription, { color: colors.textSecondary }]}>Currently earning {agreedAmount} coins per completed chapter</ThemedText>
+                </View>
+                <TouchableOpacity
+                  style={[
+                    styles.contractButton,
+                    { backgroundColor: colors.primary }
+                  ]}
+                  onPress={() => setShowContractSelector(true)}
+                >
+                  <ThemedText style={[styles.contractButtonText, { color: '#FFFFFF' }]}>Change</ThemedText>
+                </TouchableOpacity>
               </View>
-              <TouchableOpacity
-                style={[
-                  styles.contractButton,
-                  { backgroundColor: colors.primary }
-                ]}
-                onPress={() => setShowContractSelector(true)}
-              >
-                <ThemedText style={[styles.contractButtonText, { color: '#FFFFFF' }]}>
-                  Change
-                </ThemedText>
-              </TouchableOpacity>
+            </View>
+            {/* Daily Earning Limit Section */}
+            <View>
+              <View style={styles.settingRow}>
+                <View style={styles.settingInfo}>
+                  <ThemedText style={[styles.settingLabel, { color: colors.text }]}>Maximum Daily Earnings</ThemedText>
+                  <ThemedText style={[styles.settingDescription, { color: colors.textSecondary }]}>Set your daily earning limit</ThemedText>
+                </View>
+                <TouchableOpacity
+                  style={[
+                    styles.contractButton,
+                    { backgroundColor: colors.primary }
+                  ]}
+                  onPress={() => setShowDailyLimitSelector(true)}
+                >
+                  <ThemedText style={[styles.contractButtonText, { color: '#FFFFFF' }]}>Change</ThemedText>
+                </TouchableOpacity>
+              </View>
             </View>
           </ThemedView>
 
@@ -634,6 +820,86 @@ export default function ProfileScreen() {
                   {isClearingLearnerReading ? 'Clearing...' : '📖 Clear Learner Reading Table'}
                 </ThemedText>
               </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.devButton,
+                  { backgroundColor: isDark ? '#6366F1' : '#818CF8' },
+                  isRefreshingDb && styles.buttonDisabled
+                ]}
+                onPress={async () => {
+                  setIsRefreshingDb(true);
+                  try {
+                    await dropAllTables();
+                    Toast.show({
+                      type: 'success',
+                      text1: 'Database refreshed',
+                      text2: 'All tables dropped and recreated',
+                      position: 'top',
+                      topOffset: 60,
+                      visibilityTime: 3000,
+                      autoHide: true
+                    });
+                  } catch (error) {
+                    console.error('Error refreshing DB:', error);
+                    Toast.show({
+                      type: 'error',
+                      text1: 'Error',
+                      text2: 'Failed to refresh database',
+                      position: 'top',
+                      topOffset: 60,
+                      visibilityTime: 3000,
+                      autoHide: true
+                    });
+                  } finally {
+                    setIsRefreshingDb(false);
+                  }
+                }}
+                disabled={isRefreshingDb}
+              >
+                <ThemedText style={[styles.devButtonText, { color: '#FFFFFF' }]}> 
+                  {isRefreshingDb ? 'Refreshing DB...' : '🗄️ Refresh DB (Drop All Tables)'}
+                </ThemedText>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.devButton,
+                  { backgroundColor: isDark ? '#059669' : '#10B981' },
+                  isAddingDefaultJars && styles.buttonDisabled
+                ]}
+                onPress={async () => {
+                  setIsAddingDefaultJars(true);
+                  try {
+                    await addDefaultJarsToExistingProfiles();
+                    Toast.show({
+                      type: 'success',
+                      text1: 'Default Jars Added',
+                      text2: 'All existing profiles now have default "Reading Fund" jars',
+                      position: 'top',
+                      topOffset: 60,
+                      visibilityTime: 3000,
+                      autoHide: true
+                    });
+                  } catch (error) {
+                    console.error('Error adding default jars:', error);
+                    Toast.show({
+                      type: 'error',
+                      text1: 'Error',
+                      text2: 'Failed to add default jars to existing profiles',
+                      position: 'top',
+                      topOffset: 60,
+                      visibilityTime: 3000,
+                      autoHide: true
+                    });
+                  } finally {
+                    setIsAddingDefaultJars(false);
+                  }
+                }}
+                disabled={isAddingDefaultJars}
+              >
+                <ThemedText style={[styles.devButtonText, { color: '#FFFFFF' }]}> 
+                  {isAddingDefaultJars ? 'Adding Default Jars...' : '💰 Add Default Jars to Existing Profiles'}
+                </ThemedText>
+              </TouchableOpacity>
             </ThemedView>
           )}
 
@@ -729,6 +995,13 @@ export default function ProfileScreen() {
         currentAmount={agreedAmount}
       />
 
+      <DailyLimitSelector
+        isVisible={showDailyLimitSelector}
+        onClose={() => setShowDailyLimitSelector(false)}
+        onLimitChanged={handleDailyLimitChange}
+        currentLimit={50}
+      />
+
       <Modal
         isVisible={showDeleteModal}
         onBackdropPress={() => setShowDeleteModal(false)}
@@ -796,6 +1069,118 @@ export default function ProfileScreen() {
                   {isDeleting ? 'Deleting...' : 'Delete Account'}
                 </ThemedText>
               </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Add Profile Modal */}
+      <Modal
+        isVisible={showAddProfileModal}
+        onBackdropPress={() => setShowAddProfileModal(false)}
+        onBackButtonPress={() => setShowAddProfileModal(false)}
+        style={styles.modal}
+        animationIn="slideInUp"
+        animationOut="slideOutDown"
+      >
+        <View style={[styles.confirmationModal, { backgroundColor: isDark ? '#1F2937' : '#FFFFFF' }]}>
+          <View style={styles.confirmationHeader}>
+            <ThemedText style={[styles.confirmationTitle, { color: colors.text }]}>
+              Create New Profile
+            </ThemedText>
+            <ThemedText style={[styles.confirmationText, { color: colors.textSecondary }]}>
+              Choose an avatar and enter a name for your new profile
+            </ThemedText>
+          </View>
+
+          {/* Avatar Selection */}
+          <View style={{ marginBottom: 20 }}>
+            <ThemedText style={[styles.modalSectionTitle, { color: colors.text }]}>
+              Choose Avatar
+            </ThemedText>
+            <View style={styles.avatarGrid}>
+              {Object.keys(AVATAR_IMAGES).map((avatarId) => (
+                <TouchableOpacity
+                  key={avatarId}
+                  style={[
+                    styles.avatarButton,
+                    selectedAvatar === avatarId && styles.avatarButtonSelected
+                  ]}
+                  onPress={() => setSelectedAvatar(avatarId)}
+                >
+                  <Image
+                    source={AVATAR_IMAGES[avatarId]}
+                    style={styles.avatarImage}
+                  />
+                  {selectedAvatar === avatarId && (
+                    <View style={styles.avatarCheckmark}>
+                      <ThemedText style={{ color: '#FFFFFF', fontSize: 16 }}>✓</ThemedText>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {/* Name Input */}
+          <View style={{ marginBottom: 24 }}>
+            <ThemedText style={[styles.modalSectionTitle, { color: colors.text }]}>
+              Profile Name
+            </ThemedText>
+            <TextInput
+              style={{
+                backgroundColor: isDark ? '#374151' : '#F3F4F6',
+                color: colors.text,
+                borderRadius: 8,
+                padding: 12,
+                borderWidth: 1,
+                borderColor: profileError ? '#DC2626' : '#E5E7EB',
+                fontSize: 16,
+              }}
+              placeholder="Enter profile name"
+              placeholderTextColor={isDark ? '#9CA3AF' : '#6B7280'}
+              value={newProfileName}
+              onChangeText={(text) => {
+                setNewProfileName(text);
+                if (profileError) setProfileError('');
+              }}
+              maxLength={20}
+            />
+            {profileError ? (
+              <ThemedText style={{ color: '#DC2626', fontSize: 12, marginTop: 4 }}>
+                {profileError}
+              </ThemedText>
+            ) : null}
+          </View>
+
+          {/* Action Buttons */}
+          <View style={styles.confirmationButtons}>
+            <TouchableOpacity
+              style={[styles.paperButton, { backgroundColor: isDark ? '#374151' : '#F3F4F6' }]}
+              onPress={() => {
+                setShowAddProfileModal(false);
+                setNewProfileName('');
+                setSelectedAvatar('1');
+                setProfileError('');
+              }}
+            >
+              <ThemedText style={[styles.paperButtonText, { color: colors.text }]}>
+                Cancel
+              </ThemedText>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[
+                styles.paperButton,
+                { backgroundColor: '#4F46E5' },
+                (!newProfileName.trim() || isAddingProfile) && styles.buttonDisabled
+              ]}
+              onPress={handleAddProfile}
+              disabled={!newProfileName.trim() || isAddingProfile}
+            >
+              <ThemedText style={[styles.paperButtonText, { color: '#FFFFFF' }]}>
+                {isAddingProfile ? 'Creating...' : 'Create Profile'}
+              </ThemedText>
             </TouchableOpacity>
           </View>
         </View>
@@ -906,6 +1291,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 16,
     paddingHorizontal: 8,
+    marginTop: 8,
   },
   paperButton: {
     borderRadius: 12,
@@ -917,6 +1303,11 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     flex: 1,
     maxWidth: 160,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 8,
+    marginHorizontal: 4,
   },
   paperButtonGradient: {
     padding: 16,
@@ -1138,5 +1529,115 @@ const styles = StyleSheet.create({
     fontSize: 32,
     marginRight: 8,
     paddingTop: 18,
+  },
+  profileGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-start',
+  },
+  profileCardGrid: {
+    width: '48%',
+    backgroundColor: '#F3F4F6',
+    borderRadius: 10,
+    padding: 12,
+    minHeight: 80,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.07,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  profileCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  profileAvatarGrid: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#6366F1',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 4,
+    overflow: 'hidden',
+  },
+  profileAvatarImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 16,
+  },
+  deleteIconButton: {
+    padding: 4,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteIconText: {
+    fontSize: 18,
+    color: '#DC2626',
+  },
+  profileNameGrid: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#22223b',
+    textAlign: 'center',
+    marginTop: 2,
+  },
+  profileReadingLevel: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#94A3B8',
+    textAlign: 'center',
+    marginTop: 2,
+  },
+  avatarGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  avatarButton: {
+    width: '30%',
+    aspectRatio: 1,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  avatarButtonSelected: {
+    borderColor: '#4F46E5',
+    borderWidth: 3,
+    backgroundColor: 'rgba(79, 70, 229, 0.1)',
+    shadowColor: '#4F46E5',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+  },
+  avatarCheckmark: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: '#4F46E5',
+    borderRadius: 12,
+    width: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  modalSectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 12,
   },
 }); 

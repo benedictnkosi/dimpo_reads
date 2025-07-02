@@ -1,10 +1,9 @@
-import { HOST_URL } from '@/config/api';
-import { router } from 'expo-router';
-import * as SecureStore from 'expo-secure-store';
-import { useEffect, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
 import { Image, ImageSourcePropType, StyleSheet, TouchableOpacity, useColorScheme, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedText } from './ThemedText';
+import { getCurrentProfile } from '@/services/database';
 
 const avatarImages: Record<string, ImageSourcePropType> = {
   '1': require('../assets/images/avatars/1.png'),
@@ -19,20 +18,18 @@ const avatarImages: Record<string, ImageSourcePropType> = {
   'default': require('../assets/images/avatars/8.png'),
 };
 
-interface LearnerInfo {
+interface CurrentProfile {
+  id: number;
+  uid: string;
   name: string;
-  avatar?: string;
-  points?: number;
-  streak?: number;
-  school?: string;
+  reading_level: string;
+  avatar: string;
+  created: string;
+  updated: string;
 }
 
-interface StreakInfo {
-  calculatedFromProgress: boolean;
-  id: number;
-  lastActivityDate: string;
-  streak: number;
-  uid: string;
+interface HeaderProps {
+  selectedProfile?: CurrentProfile | null;
 }
 
 function getInitial(name?: string) {
@@ -40,58 +37,49 @@ function getInitial(name?: string) {
   return name.trim().charAt(0).toUpperCase();
 }
 
-export function Header() {
+export function Header({ selectedProfile }: HeaderProps) {
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
-  const [learnerInfo, setLearnerInfo] = useState<LearnerInfo | null>(null);
-  const [streakInfo, setStreakInfo] = useState<StreakInfo | null>(null);
+  const [currentProfile, setCurrentProfile] = useState<CurrentProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    async function fetchLearnerInfo() {
-      try {
-        const authData = await SecureStore.getItemAsync('auth');
-        if (!authData) {
-          setIsLoading(false);
-          return;
-        }
-        const { user } = JSON.parse(authData);
-        if (!user?.uid) {
-          setIsLoading(false);
-          return;
-        }
-        const [learnerResponse, streakResponse] = await Promise.all([
-          fetch(`${HOST_URL}/api/language-learners/uid/${user.uid}`),
-          fetch(`${HOST_URL}/api/language-learners/${user.uid}/streak`)
-        ]);
-
-        if (!learnerResponse.ok || !streakResponse.ok) {
-          throw new Error('Failed to fetch learner info');
-        }
-
-        const [learnerData, streakData] = await Promise.all([
-          learnerResponse.json(),
-          streakResponse.json()
-        ]);
-
-        setLearnerInfo(learnerData);
-        setStreakInfo(streakData);
-      } catch (error) {
-        console.error('Error fetching learner info:', error);
-      } finally {
-        setIsLoading(false);
-      }
+  const fetchCurrentProfile = useCallback(async () => {
+    try {
+      const profile = await getCurrentProfile();
+      setCurrentProfile(profile);
+    } catch (error) {
+      // Error fetching current profile
+    } finally {
+      setIsLoading(false);
     }
-    fetchLearnerInfo();
   }, []);
 
-  const avatarSource = learnerInfo?.avatar && avatarImages[learnerInfo.avatar]
-    ? avatarImages[learnerInfo.avatar]
+  useEffect(() => {
+    fetchCurrentProfile();
+  }, [fetchCurrentProfile]);
+
+  // Update current profile when selectedProfile prop changes
+  useEffect(() => {
+    if (selectedProfile) {
+      setCurrentProfile(selectedProfile);
+      setIsLoading(false);
+    }
+  }, [selectedProfile]);
+
+  // Refresh profile when screen comes into focus (e.g., after profile changes)
+  useFocusEffect(
+    useCallback(() => {
+      fetchCurrentProfile();
+    }, [fetchCurrentProfile])
+  );
+
+  const avatarSource = currentProfile?.avatar && avatarImages[currentProfile.avatar]
+    ? avatarImages[currentProfile.avatar]
     : avatarImages['default'];
 
   return (
-    <View style={[styles.header, { paddingTop: insets.top, backgroundColor: isDark ? '#1F2937' : '#F8FAFC' }]}>
+    <View style={[styles.header, { paddingTop: insets.top + 8, backgroundColor: isDark ? '#1F2937' : '#F8FAFC' }]}>
       <View style={styles.row}>
         <View style={styles.greetingSection}>
           <ThemedText style={[styles.greetingText, { color: isDark ? '#F3F4F6' : '#22223B' }]}>
@@ -103,7 +91,7 @@ export function Header() {
         </View>
         <TouchableOpacity onPress={() => router.push('/profile')}>
           <View style={[styles.avatarCircle, { backgroundColor: isDark ? '#7C3AED' : '#8B5CF6' }]}>
-            {learnerInfo?.avatar ? (
+            {currentProfile?.avatar ? (
               <Image
                 source={avatarSource}
                 style={styles.avatarImage}
@@ -111,7 +99,7 @@ export function Header() {
               />
             ) : (
               <ThemedText style={styles.avatarInitial}>
-                {getInitial(learnerInfo?.name) || 'U'}
+                {getInitial(currentProfile?.name) || 'U'}
               </ThemedText>
             )}
           </View>

@@ -5,21 +5,23 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemedText } from '../components/ThemedText';
 import RegisterForm from './components/RegisterForm';
+import { useTheme } from '../contexts/ThemeContext';
 
 export default function RegisterScreen() {
     const params = useLocalSearchParams();
+    const { isDark } = useTheme();
 
     return (
         <SafeAreaView style={styles.container} testID="register-screen">
             <LinearGradient
-                colors={['#1B1464', '#2B2F77']}
+                colors={isDark ? ['#1B1464', '#2B2F77'] : ['#F8FAFC', '#E2E8F0']}
                 style={styles.gradient}
                 testID="register-gradient-background"
             >
                 <View style={styles.content} testID="register-content">
                     <View style={styles.header} testID="register-header">
-                        <ThemedText style={styles.title} testID="register-title">Create Account</ThemedText>
-                        <ThemedText style={styles.subtitle} testID="register-subtitle">Join thousands of readers earning money! 🎯</ThemedText>
+                        <ThemedText style={[styles.title, { color: isDark ? '#FFFFFF' : '#1B1464' }]} testID="register-title">Create Account</ThemedText>
+                        <ThemedText style={[styles.subtitle, { color: isDark ? '#E2E8F0' : '#475569' }]} testID="register-subtitle">Join thousands of readers earning money! 🎯</ThemedText>
                     </View>
 
                     <RegisterForm onboardingData={params as any} />
@@ -51,7 +53,6 @@ const styles = StyleSheet.create({
     title: {
         fontSize: 22,
         fontWeight: 'bold',
-        color: '#FFFFFF',
         marginBottom: 16,
         textAlign: 'center',
         width: '100%',
@@ -59,7 +60,6 @@ const styles = StyleSheet.create({
     },
     subtitle: {
         fontSize: 20,
-        color: '#E2E8F0',
         textAlign: 'center',
         lineHeight: 28,
         paddingHorizontal: 8,

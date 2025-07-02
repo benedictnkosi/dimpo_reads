@@ -410,9 +410,12 @@ export async function updateVersion(uid: string, version: string, os: string): P
 export interface ApiCompletedChapter {
   id: number;
   learnerUid: string;
-  chapterNumber: number;
+  profileUid: string;
+  chapterName: string;
   bookTitle: string;
   completedAt: string;
+  duration: number;
+  score: number;
 }
 
 // Interface for completed chapters API response
@@ -440,8 +443,9 @@ export interface CompletedChapterSubmission {
   learnerUid: string;
   chapterName: string;
   bookTitle: string;
-  readingSpeed: number;
+  duration: number;
   score: number;
+  profileUid: string;
 }
 
 // Function to submit completed chapter to API

@@ -1,5 +1,6 @@
 import { HOST_URL } from '@/config/api';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { analytics } from '@/services/analytics';
 import { completeDeviceRegistration, checkDeviceRegistration, getDeviceId, DeviceRegistrationInfo } from '@/services/deviceRegistration';
 import { Ionicons } from '@expo/vector-icons';
@@ -271,6 +272,7 @@ export default function OnboardingScreen() {
   const [registrationMethod, setRegistrationMethod] = useState<'email' | 'phone'>('email');
   const insets = useSafeAreaInsets();
   const { signUp } = useAuth();
+  const { isDark, colors } = useTheme();
 
   const [errors, setErrors] = useState({
     curriculum: ''
@@ -325,9 +327,11 @@ export default function OnboardingScreen() {
 
   // Track onboarding screen view
   useEffect(() => {
-    analytics.track('reading_onboarding_started', {
+    const stepName = getStepName(step);
+    analytics.track(`reading_onboarding_${stepName}_viewed`, {
       step_number: step,
-      step_name: getStepName(step)
+      step_name: stepName,
+      total_steps: 4
     });
   }, [step]);
 
@@ -364,7 +368,9 @@ export default function OnboardingScreen() {
       analytics.track('reading_onboarding_completed', {
         method: 'registration',
         avatar_id: selectedAvatar,
-        total_steps: 4
+        total_steps: 4,
+        agreed_amount: agreedAmount,
+        age: age
       });
 
       // Store onboarding data
@@ -413,45 +419,50 @@ export default function OnboardingScreen() {
                   />
                 </View>
                 <View style={[styles.textContainer, { paddingHorizontal: 20 }]} testID="welcome-text-container">
-                  <ThemedText style={[styles.welcomeTitle, { fontSize: 24, marginBottom: 24 }]} testID="welcome-title">
+                  <ThemedText style={[styles.welcomeTitle, { fontSize: 24, marginBottom: 24, color: isDark ? '#FFFFFF' : '#1E293B' }]} testID="welcome-title">
                     Welcome to Dimpo Reads
                   </ThemedText>
-                  <ThemedText style={[styles.welcomeText, { fontSize: 20, lineHeight: 32, marginBottom: 24 }]} testID="welcome-description">
-                    Read amazing stories and earn pocket money! Start your reading adventure today.
+                  <ThemedText style={[styles.welcomeText, { fontSize: 20, lineHeight: 32, marginBottom: 24, color: isDark ? '#E2E8F0' : '#475569' }]} testID="welcome-description">
+                    Read amazing stories and earn an allowance! Start your reading adventure today.
                   </ThemedText>
                 </View>
               </>
             )}
             {/* Device Registration Info */}
             {isCheckingDevice && (
-              <View style={styles.deviceInfoContainer}>
-                <ThemedText style={styles.deviceInfoText}>
+              <View style={[styles.deviceInfoContainer, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.05)' }]}>
+                <ThemedText style={[styles.deviceInfoText, { color: isDark ? '#FFFFFF' : '#1E293B' }]}>
                   Checking device registration...
                 </ThemedText>
               </View>
             )}
             {!isCheckingDevice && deviceInfo && (
-              <View style={styles.deviceInfoContainer}>
-                <ThemedText style={styles.deviceInfoTitle}>
+              <View style={[styles.deviceInfoContainer, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.05)' }]}>
+                <ThemedText style={[styles.deviceInfoTitle, { color: isDark ? '#FFFFFF' : '#1E293B' }]}>
                   📱 Device Already Registered
                 </ThemedText>
                 <View style={{ height: 8 }} />
-                <ThemedText style={styles.deviceInfoText}>
+                <ThemedText style={[styles.deviceInfoText, { color: isDark ? '#FFFFFF' : '#1E293B' }]}>
                   This device is linked to:
                 </ThemedText>
-                <ThemedText style={styles.deviceInfoEmail}>
+                <ThemedText style={[styles.deviceInfoEmail, { color: isDark ? '#FFFFFF' : '#1E293B' }]}>
                   {deviceInfo.learnerEmail}
                 </ThemedText>
-                <View style={styles.deviceInfoDivider} />
-                <ThemedText style={styles.deviceInfoSubtext}>
+                <View style={[styles.deviceInfoDivider, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)' }]} />
+                <ThemedText style={[styles.deviceInfoSubtext, { color: isDark ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.6)' }]}>
                   Registered on: {new Date(deviceInfo.registrationDate).toLocaleDateString()}
                 </ThemedText>
-                <ThemedText style={styles.deviceInfoWarning}>
+                <ThemedText style={[styles.deviceInfoWarning, { color: isDark ? '#FBBF24' : '#D97706' }]}>
                   Please login to continue using this device.
                 </ThemedText>
                 <TouchableOpacity
-                  style={styles.continueWithAccountButton}
+                  style={[styles.continueWithAccountButton, { backgroundColor: isDark ? '#FFFFFF' : '#1E293B' }]}
                   onPress={() => {
+                    analytics.track('reading_onboarding_device_login_pressed', {
+                      device_email: deviceInfo.learnerEmail,
+                      registration_date: deviceInfo.registrationDate,
+                      step_name: 'welcome'
+                    });
                     // Navigate to login with the email pre-filled
                     router.push({
                       pathname: '/login',
@@ -462,7 +473,7 @@ export default function OnboardingScreen() {
                   }}
                   testID="continue-with-account-button"
                 >
-                  <ThemedText style={styles.continueWithAccountButtonText}>
+                  <ThemedText style={[styles.continueWithAccountButtonText, { color: isDark ? '#1B1464' : '#FFFFFF' }]}>
                     Login
                   </ThemedText>
                 </TouchableOpacity>
@@ -474,16 +485,18 @@ export default function OnboardingScreen() {
         return (
           <View style={[styles.step, { justifyContent: 'flex-start', paddingTop: 40 }]} testID="earn-step">
             <View style={{ width: '100%', height: 340, marginBottom: 40, justifyContent: 'center', alignItems: 'center', paddingTop: 40 }}>
-              <ThemedText style={{ fontSize: 120, paddingTop: 120  }} testID="earn-emoji">
-                💸
-              </ThemedText>
+              <Image
+                source={require('../assets/images/dimpo/earning.png')}
+                style={{ width: 220, height: 220, resizeMode: 'contain', marginTop: 60 }}
+                testID="earn-image"
+              />
             </View>
             <View style={[styles.textContainer, { paddingHorizontal: 20 }]} testID="earn-text-container">
-              <ThemedText style={[styles.welcomeTitle, { fontSize: 26, marginBottom: 20 }]} testID="earn-title">
+              <ThemedText style={[styles.welcomeTitle, { fontSize: 26, marginBottom: 20, color: isDark ? '#FFFFFF' : '#1E293B' }]} testID="earn-title">
                 Read and Earn!
               </ThemedText>
-              <ThemedText style={[styles.welcomeText, { fontSize: 18, lineHeight: 28, marginBottom: 20 }]} testID="earn-description">
-                Every time you finish a story, you can earn real pocket money. The more you read, the more you earn!
+              <ThemedText style={[styles.welcomeText, { fontSize: 18, lineHeight: 28, marginBottom: 20, color: isDark ? '#E2E8F0' : '#475569' }]} testID="earn-description">
+                Every time you finish a story, you can earn real money. The more you read, the more you earn!
               </ThemedText>
             </View>
           </View>
@@ -492,15 +505,17 @@ export default function OnboardingScreen() {
         return (
           <View style={[styles.step, { justifyContent: 'flex-start', paddingTop: 40 }]} testID="quiz-step">
             <View style={{ width: '100%', height: 340, marginBottom: 40, justifyContent: 'center', alignItems: 'center', paddingTop: 40 }}>
-              <ThemedText style={{ fontSize: 120 , paddingTop: 120 }} testID="quiz-emoji">
-                📝
-              </ThemedText>
+              <Image
+                source={require('../assets/images/dimpo/quiz.png')}
+                style={{ width: 220, height: 220, resizeMode: 'contain', marginTop: 60 }}
+                testID="quiz-image"
+              />
             </View>
             <View style={[styles.textContainer, { paddingHorizontal: 20 }]} testID="quiz-text-container">
-              <ThemedText style={[styles.welcomeTitle, { fontSize: 26, marginBottom: 20 }]} testID="quiz-title">
+              <ThemedText style={[styles.welcomeTitle, { fontSize: 26, marginBottom: 20, color: isDark ? '#FFFFFF' : '#1E293B' }]} testID="quiz-title">
                 Take a Quick Quiz
               </ThemedText>
-              <ThemedText style={[styles.welcomeText, { fontSize: 18, lineHeight: 28, marginBottom: 20 }]} testID="quiz-description">
+              <ThemedText style={[styles.welcomeText, { fontSize: 18, lineHeight: 28, marginBottom: 20, color: isDark ? '#E2E8F0' : '#475569' }]} testID="quiz-description">
                 After each chapter, answer a few fun questions to show you've read and understood the story.
               </ThemedText>
             </View>
@@ -515,14 +530,14 @@ export default function OnboardingScreen() {
         return (
           <View style={[styles.step, { justifyContent: 'flex-start', paddingTop: 40 }]} testID="deal-step">
             <View style={[styles.textContainer, { paddingHorizontal: 20 }]} testID="deal-text-container">
-              <ThemedText style={[styles.welcomeTitle, { fontSize: 26, marginBottom: 20 }]} testID="deal-title">
+              <ThemedText style={[styles.welcomeTitle, { fontSize: 26, marginBottom: 20, color: isDark ? '#FFFFFF' : '#1E293B' }]} testID="deal-title">
                 Make a Deal! 🤝
               </ThemedText>
-              <ThemedText style={[styles.welcomeText, { fontSize: 18, lineHeight: 28, marginBottom: 20 }]} testID="deal-description">
+              <ThemedText style={[styles.welcomeText, { fontSize: 18, lineHeight: 28, marginBottom: 20, color: isDark ? '#E2E8F0' : '#475569' }]} testID="deal-description">
               Ask your parents: "How much can I earn for every chapter I read?"
               Each chapter takes just 8–10 minutes — like a snack break for your brain!
               </ThemedText>
-              <ThemedText style={[styles.welcomeText, { fontSize: 16, marginBottom: 12, color: '#FBBF24' }]}>Select your amount per chapter:</ThemedText>
+              <ThemedText style={[styles.welcomeText, { fontSize: 16, marginBottom: 12, color: isDark ? '#FBBF24' : '#D97706' }]}>Select your amount per chapter:</ThemedText>
               <View style={{ gap: 12, marginTop: 8 }}>
                 {amountRows.map((row: any[], rowIdx: number) => (
                   <View key={rowIdx} style={{ flexDirection: 'row', justifyContent: 'center', marginBottom: 8 }}>
@@ -533,17 +548,34 @@ export default function OnboardingScreen() {
                           width: 72,
                           height: 56,
                           borderRadius: 16,
-                          backgroundColor: agreedAmount === option ? '#4F46E5' : 'rgba(255,255,255,0.15)',
+                          backgroundColor: agreedAmount === option 
+                            ? (isDark ? '#4F46E5' : '#1E293B') 
+                            : (isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.05)'),
                           justifyContent: 'center',
                           alignItems: 'center',
                           marginHorizontal: 6,
                           borderWidth: agreedAmount === option ? 2 : 1,
-                          borderColor: agreedAmount === option ? '#fff' : 'rgba(255,255,255,0.2)'
+                          borderColor: agreedAmount === option 
+                            ? (isDark ? '#fff' : '#1E293B') 
+                            : (isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)')
                         }}
-                        onPress={() => setAgreedAmount(option)}
+                        onPress={() => {
+                          analytics.track('reading_onboarding_amount_selected', {
+                            amount: option,
+                            step_name: 'deal',
+                            step_number: 3
+                          });
+                          setAgreedAmount(option);
+                        }}
                         testID={`amount-btn-${option}`}
                       >
-                        <ThemedText style={{ color: '#fff', fontSize: 20, fontWeight: '700' }}>{option}</ThemedText>
+                        <ThemedText style={{ 
+                          color: agreedAmount === option 
+                            ? (isDark ? '#fff' : '#FFFFFF') 
+                            : (isDark ? '#fff' : '#1E293B'), 
+                          fontSize: 20, 
+                          fontWeight: '700' 
+                        }}>{option}</ThemedText>
                       </TouchableOpacity>
                     ))}
                   </View>
@@ -557,10 +589,10 @@ export default function OnboardingScreen() {
         return (
           <View style={styles.step} testID="avatar-step">
             <View style={styles.textContainer}>
-              <ThemedText style={styles.stepTitle}>
+              <ThemedText style={[styles.stepTitle, { color: isDark ? '#FFFFFF' : '#1E293B' }]}>
                 Choose Your Reading Buddy
               </ThemedText>
-              <ThemedText style={styles.stepSubtitle}>
+              <ThemedText style={[styles.stepSubtitle, { color: isDark ? '#E2E8F0' : '#475569' }]}>
                 Pick a reading buddy to join you on your journey to earn and learn!
               </ThemedText>
             </View>
@@ -575,9 +607,27 @@ export default function OnboardingScreen() {
                     key={avatarId}
                     style={[
                       styles.avatarButton,
-                      selectedAvatar === avatarId && styles.avatarButtonSelected
+                      { 
+                        backgroundColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
+                        borderColor: isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)'
+                      },
+                      selectedAvatar === avatarId && {
+                        borderColor: isDark ? '#4F46E5' : '#1E293B',
+                        borderWidth: 3,
+                        backgroundColor: isDark ? 'rgba(79, 70, 229, 0.1)' : 'rgba(30, 41, 59, 0.1)',
+                        shadowColor: isDark ? '#4F46E5' : '#1E293B',
+                        shadowOffset: { width: 0, height: 0 },
+                        shadowOpacity: 0.5,
+                        shadowRadius: 8,
+                        elevation: 5,
+                      }
                     ]}
                     onPress={() => {
+                      analytics.track('reading_onboarding_avatar_selected', {
+                        avatar_id: avatarId,
+                        step_name: 'avatar',
+                        step_number: 4
+                      });
                       setSelectedAvatar(avatarId);
                     }}
                     testID={`avatar-${avatarId}`}
@@ -587,7 +637,7 @@ export default function OnboardingScreen() {
                       style={styles.avatarImage}
                     />
                     {selectedAvatar === avatarId && (
-                      <View style={styles.avatarCheckmark}>
+                      <View style={[styles.avatarCheckmark, { backgroundColor: isDark ? '#4F46E5' : '#1E293B' }]}>
                         <Ionicons name="checkmark" size={16} color="#FFFFFF" />
                       </View>
                     )}
@@ -597,8 +647,15 @@ export default function OnboardingScreen() {
             </ScrollView>
             <View style={styles.authOptionsContainer}>
               <TouchableOpacity
-                style={[styles.authButton, styles.emailButton]}
+                style={[styles.authButton, { backgroundColor: isDark ? '#4F46E5' : '#1E293B' }]}
                 onPress={() => {
+                  analytics.track('reading_onboarding_registration_started', {
+                    avatar_id: selectedAvatar,
+                    agreed_amount: agreedAmount,
+                    age: age,
+                    step_name: 'avatar',
+                    step_number: 4
+                  });
                   router.push({
                     pathname: '/register',
                     params: {
@@ -611,7 +668,7 @@ export default function OnboardingScreen() {
                 }}
                 testID="create-account-button"
               >
-                <ThemedText style={styles.authButtonText}>
+                <ThemedText style={[styles.authButtonText, { color: '#FFFFFF' }]}>
                   Start Reading Adventure
                 </ThemedText>
               </TouchableOpacity>
@@ -642,19 +699,23 @@ export default function OnboardingScreen() {
 
   return (
     <LinearGradient
-      colors={['#1B1464', '#2B2F77']}
+      colors={isDark ? ['#1B1464', '#2B2F77'] : ['#F8FAFC', '#E2E8F0']}
       style={[styles.container, { paddingTop: insets.top }]}
     >
       <View style={styles.content}>
         {/* Device Registration Banner */}
         {!isCheckingDevice && deviceInfo && step > 0 && (
-          <View style={styles.deviceRegistrationBanner}>
-            <ThemedText style={styles.deviceRegistrationBannerText}>
+          <View style={[styles.deviceRegistrationBanner, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)' }]}>
+            <ThemedText style={[styles.deviceRegistrationBannerText, { color: isDark ? '#FFFFFF' : '#1E293B' }]}>
               📱 Device linked to {deviceInfo.learnerEmail} - Login required
             </ThemedText>
             <TouchableOpacity
-              style={styles.deviceRegistrationBannerButton}
+              style={[styles.deviceRegistrationBannerButton, { backgroundColor: isDark ? '#FFFFFF' : '#1E293B' }]}
               onPress={() => {
+                analytics.track('reading_onboarding_device_banner_login_pressed', {
+                  device_email: deviceInfo.learnerEmail,
+                  step_name: getStepName(step)
+                });
                 router.push({
                   pathname: '/login',
                   params: {
@@ -663,7 +724,7 @@ export default function OnboardingScreen() {
                 });
               }}
             >
-              <ThemedText style={styles.deviceRegistrationBannerButtonText}>
+              <ThemedText style={[styles.deviceRegistrationBannerButtonText, { color: isDark ? '#1B1464' : '#FFFFFF' }]}>
                 Login
               </ThemedText>
             </TouchableOpacity>
@@ -679,27 +740,32 @@ export default function OnboardingScreen() {
             {step === 0 ? (
               <>
                 <TouchableOpacity
-                  style={[styles.button, styles.secondaryButton]}
+                  style={[styles.button, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)' }]}
                   onPress={() => {
+                    analytics.track('reading_onboarding_back_to_login', {
+                      step_name: 'welcome',
+                      step_number: 0
+                    });
                     router.replace('/login');
                   }}
                   testID="login-button"
                 >
-                  <ThemedText style={styles.buttonText}>Back</ThemedText>
+                  <ThemedText style={[styles.buttonText, { color: isDark ? '#FFFFFF' : '#1E293B' }]}>Login</ThemedText>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.button, styles.primaryButton]}
+                  style={[styles.button, { backgroundColor: isDark ? '#FFFFFF' : '#1E293B' }]}
                   onPress={() => {
                     // Track onboarding start
                     analytics.track('reading_onboarding_started', {
-                      step_number: 1,
-                      step_name: 'welcome'
+                      step_number: 0,
+                      step_name: 'welcome',
+                      action: 'start_onboarding'
                     });
                     setStep(1);
                   }}
                   testID="start-onboarding-button"
                 >
-                  <ThemedText style={[styles.buttonText, styles.primaryButtonText]}>
+                  <ThemedText style={[styles.buttonText, { color: isDark ? '#4d5ad3' : '#FFFFFF' }]}>
                     Let's Read! 📚
                   </ThemedText>
                 </TouchableOpacity>
@@ -707,28 +773,49 @@ export default function OnboardingScreen() {
             ) : (
               <>
                 <TouchableOpacity
-                  style={[styles.button, styles.secondaryButton]}
+                  style={[styles.button, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)' }]}
                   onPress={() => {
+                    analytics.track('reading_onboarding_navigation', {
+                      action: 'previous_step',
+                      from_step: step,
+                      to_step: step - 1,
+                      step_name: getStepName(step)
+                    });
                     setStep(step - 1);
                   }}
                   testID="previous-step-button"
                 >
-                  <ThemedText style={styles.buttonText}>Back</ThemedText>
+                  <ThemedText style={[styles.buttonText, { color: isDark ? '#FFFFFF' : '#1E293B' }]}>Back</ThemedText>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[
                     styles.button,
-                    styles.primaryButton,
-                    (!canProceed() || !!deviceInfo) && styles.buttonDisabled
+                    { 
+                      backgroundColor: (!canProceed() || !!deviceInfo) 
+                        ? (isDark ? '#94A3B8' : '#CBD5E1') 
+                        : (isDark ? '#FFFFFF' : '#1E293B')
+                    }
                   ]}
-                  onPress={handleNextStep}
+                  onPress={() => {
+                    analytics.track('reading_onboarding_navigation', {
+                      action: 'next_step',
+                      from_step: step,
+                      to_step: step + 1,
+                      step_name: getStepName(step),
+                      can_proceed: canProceed()
+                    });
+                    handleNextStep();
+                  }}
                   disabled={!canProceed()}
                   testID="next-step-button"
                 >
                   <ThemedText style={[
                     styles.buttonText,
-                    styles.primaryButtonText,
-                    (!canProceed() || !!deviceInfo) && styles.buttonTextDisabled
+                    { 
+                      color: (!canProceed() || !!deviceInfo)
+                        ? (isDark ? '#E2E8F0' : '#64748B')
+                        : (isDark ? '#4d5ad3' : '#FFFFFF')
+                    }
                   ]}>
                     Continue! ⭐
                   </ThemedText>
@@ -778,7 +865,6 @@ const styles = StyleSheet.create({
   welcomeTitle: {
     fontSize: 22,
     fontWeight: 'bold',
-    color: '#FFFFFF',
     marginBottom: 16,
     textAlign: 'center',
     letterSpacing: -0.5,
@@ -786,7 +872,6 @@ const styles = StyleSheet.create({
   boastingText: {
     fontSize: 22,
     fontWeight: 'bold',
-    color: '#FFFFFF',
     marginBottom: 24,
     textAlign: 'center',
     letterSpacing: -0.5,
@@ -794,14 +879,12 @@ const styles = StyleSheet.create({
   },
   welcomeText: {
     fontSize: 18,
-    color: '#E2E8F0',
     textAlign: 'center',
     lineHeight: 28,
   },
   stepTitle: {
     fontSize: 22,
     fontWeight: '700',
-    color: '#FFFFFF',
     marginTop: 12,
     marginBottom: 12,
     textAlign: 'center',
@@ -847,29 +930,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  primaryButton: {
-    backgroundColor: '#FFFFFF',
-  },
-  secondaryButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-  },
+
   buttonText: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#FFFFFF',
   },
-  primaryButtonText: {
-    color: '#4d5ad3',
-  },
-  debugText: {
-    color: '#E2E8F0',
-  },
-  buttonDisabled: {
-    backgroundColor: '#94A3B8',
-  },
-  buttonTextDisabled: {
-    color: '#E2E8F0',
-  },
+
   errorText: {
     color: '#FCA5A5',
   },
