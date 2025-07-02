@@ -70,6 +70,7 @@ export default function ProfileScreen() {
   const [showDailyLimitSelector, setShowDailyLimitSelector] = useState(false);
   const [showAddProfileModal, setShowAddProfileModal] = useState(false);
   const [selectedAvatar, setSelectedAvatar] = useState('1');
+  const [earningsLocked, setEarningsLocked] = useState(true);
 
   // Reading level constants
   const READING_LEVELS = {
@@ -670,45 +671,58 @@ export default function ProfileScreen() {
           </ThemedView>
 
           {/* Earnings Controls Card (Parent for Contract Amount and Daily Earning Limit) */}
-          <ThemedView style={[styles.settingsCard, { backgroundColor: isDark ? colors.card : '#FFFFFF' }]}> 
-            <ThemedText style={[styles.settingsTitle, { color: colors.text }]}>💸 Earnings Controls</ThemedText>
-            {/* Contract Amount Section */}
-            <View style={{ marginBottom: 24 }}>
-              <View style={styles.settingRow}>
-                <View style={styles.settingInfo}>
-                  <ThemedText style={[styles.settingLabel, { color: colors.text }]}>Earnings per Chapter</ThemedText>
-                  <ThemedText style={[styles.settingDescription, { color: colors.textSecondary }]}>Currently earning {agreedAmount} coins per completed chapter</ThemedText>
+          <View style={{ position: 'relative' }}>
+            <ThemedView style={[styles.settingsCard, { backgroundColor: isDark ? colors.card : '#FFFFFF' }]}> 
+              <ThemedText style={[styles.settingsTitle, { color: colors.text }]}>👪 Parental Controls</ThemedText>
+              {/* Contract Amount Section */}
+              <View style={{ marginBottom: 24 }}>
+                <View style={styles.settingRow}>
+                  <View style={styles.settingInfo}>
+                    <ThemedText style={[styles.settingLabel, { color: colors.text }]}>Earnings per Chapter</ThemedText>
+                    <ThemedText style={[styles.settingDescription, { color: colors.textSecondary }]}>Currently earning {agreedAmount} coins per completed chapter</ThemedText>
+                  </View>
+                  <TouchableOpacity
+                    style={[
+                      styles.contractButton,
+                      { backgroundColor: colors.primary }
+                    ]}
+                    onPress={() => setShowContractSelector(true)}
+                  >
+                    <ThemedText style={[styles.contractButtonText, { color: '#FFFFFF' }]}>Change</ThemedText>
+                  </TouchableOpacity>
                 </View>
-                <TouchableOpacity
-                  style={[
-                    styles.contractButton,
-                    { backgroundColor: colors.primary }
-                  ]}
-                  onPress={() => setShowContractSelector(true)}
-                >
-                  <ThemedText style={[styles.contractButtonText, { color: '#FFFFFF' }]}>Change</ThemedText>
-                </TouchableOpacity>
               </View>
-            </View>
-            {/* Daily Earning Limit Section */}
-            <View>
-              <View style={styles.settingRow}>
-                <View style={styles.settingInfo}>
-                  <ThemedText style={[styles.settingLabel, { color: colors.text }]}>Maximum Daily Earnings</ThemedText>
-                  <ThemedText style={[styles.settingDescription, { color: colors.textSecondary }]}>Set your daily earning limit</ThemedText>
+              {/* Daily Earning Limit Section */}
+              <View>
+                <View style={styles.settingRow}>
+                  <View style={styles.settingInfo}>
+                    <ThemedText style={[styles.settingLabel, { color: colors.text }]}>Maximum Daily Earnings</ThemedText>
+                    <ThemedText style={[styles.settingDescription, { color: colors.textSecondary }]}>Set your daily earning limit</ThemedText>
+                  </View>
+                  <TouchableOpacity
+                    style={[
+                      styles.contractButton,
+                      { backgroundColor: colors.primary }
+                    ]}
+                    onPress={() => setShowDailyLimitSelector(true)}
+                  >
+                    <ThemedText style={[styles.contractButtonText, { color: '#FFFFFF' }]}>Change</ThemedText>
+                  </TouchableOpacity>
                 </View>
-                <TouchableOpacity
-                  style={[
-                    styles.contractButton,
-                    { backgroundColor: colors.primary }
-                  ]}
-                  onPress={() => setShowDailyLimitSelector(true)}
-                >
-                  <ThemedText style={[styles.contractButtonText, { color: '#FFFFFF' }]}>Change</ThemedText>
-                </TouchableOpacity>
               </View>
-            </View>
-          </ThemedView>
+            </ThemedView>
+            {earningsLocked && (
+              <TouchableOpacity
+                activeOpacity={0.8}
+                style={styles.earningsOverlay}
+                onPress={() => setEarningsLocked(false)}
+              >
+                <View style={styles.earningsOverlayContent}>
+                  <ThemedText style={styles.earningsOverlayEmoji}>🔒</ThemedText>
+                </View>
+              </TouchableOpacity>
+            )}
+          </View>
 
           {/* Sound Settings Card */}
           <ThemedView style={[styles.settingsCard, { backgroundColor: isDark ? colors.card : '#FFFFFF' }]}>
@@ -751,7 +765,7 @@ export default function ProfileScreen() {
           </ThemedView>
 
           {/* Dev Tools Card */}
-          {user?.email && user.email.toLowerCase().includes('reading') && (
+          {user?.email && user.email.toLowerCase() === 'dev@gmail.com' && (
             <ThemedView style={[styles.devCard, { backgroundColor: isDark ? colors.card : '#FFFFFF' }]}>
               <ThemedText style={[styles.devTitle, { color: colors.text }]}>
                 🛠️ Developer Tools
@@ -1639,5 +1653,31 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     marginBottom: 12,
+  },
+  earningsOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    zIndex: 10,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  earningsOverlayContent: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  earningsOverlayEmoji: {
+    fontSize: 48,
+    color: '#fff',
+    textAlign: 'center',
+    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowOffset: { width: 2, height: 2 },
+    textShadowRadius: 8,
+    paddingTop: 50,
   },
 }); 

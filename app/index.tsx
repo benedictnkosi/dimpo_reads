@@ -31,7 +31,8 @@ import {
   getAllProfiles,
   diagnoseBalanceEarnedDiscrepancy,
   fixBalanceSynchronization,
-  getCurrentProfile
+  getCurrentProfile,
+  insertProfile
 } from '@/services/database';
 import { 
   addMoneyToJug,
@@ -52,6 +53,9 @@ import { HOST_URL } from '@/config/api';
 import { UpgradeModal } from './components/UpgradeModal';
 import { DailyEarningLimitBanner } from './components/DailyEarningLimitBanner';
 import { getDailyEarningLimitInfo, DailyEarningLimitInfo } from '@/services/dailyEarningLimit';
+import { 
+  getLearner
+} from '@/services/api';
 
 // Avatar images mapping
 const AVATAR_IMAGES: { [key: string]: any } = {
@@ -596,7 +600,20 @@ export default function HomeScreen() {
   useEffect(() => {
     const loadProfilesAndSelected = async () => {
       try {
-        const allProfiles = await getAllProfiles();
+        let allProfiles = await getAllProfiles();
+        // If no profiles exist, create a default one using the user's name
+        if (allProfiles.length === 0 && user && user.uid) {
+          let learnerName = '';
+          try {
+            const learnerInfo = await getLearner(user.uid);
+            learnerName = learnerInfo?.name;
+          } catch (e) {
+            // ignore error, fallback below
+          }
+          const defaultName = learnerName && learnerName.trim() ? learnerName : (user.displayName && user.displayName.trim() ? user.displayName : 'Reader');
+          await insertProfile({ uid: user.uid, name: defaultName, avatar: '1' });
+          allProfiles = await getAllProfiles();
+        }
         setProfiles(allProfiles);
         let selectedUid = await AsyncStorage.getItem('selectedProfileUid');
         let selected = allProfiles.find(p => p.uid === selectedUid);
@@ -611,7 +628,7 @@ export default function HomeScreen() {
       }
     };
     loadProfilesAndSelected();
-  }, []);
+  }, [user]);
 
   const handleSelectProfile = async (profile: { id: number; uid: string; name: string; reading_level: string; avatar: string; created: string; updated: string }) => {
     setSelectedProfile(profile);

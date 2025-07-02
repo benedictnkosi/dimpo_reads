@@ -229,7 +229,7 @@ export const QuickReport: React.FC<QuickReportProps> = ({
   const cards = [
     {
       icon: '📚',
-      label: 'Books Completed',
+      label: 'Books',
       value: totalBooks !== null ? `${currentData.booksRead} ` : currentData.booksRead,
       onPress: () => {
         setShowBooksModal(true);
@@ -320,7 +320,7 @@ export const QuickReport: React.FC<QuickReportProps> = ({
               ]}>{card.value}</Text>
             </LinearGradient>
           );
-          if (card.label === 'Books Completed') {
+          if (card.label === 'Books') {
             return (
               <Pressable key={card.label} onPress={card.onPress} style={{ flex: 1, marginHorizontal: 4 }}>
                 {CardContent}
@@ -390,7 +390,7 @@ export const QuickReport: React.FC<QuickReportProps> = ({
       >
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: isDark ? '#23272f' : '#fff' }]}> 
-            <Text style={[styles.modalTitle, { color: isDark ? '#f7fafc' : '#1a202c' }]}>Books Completed (Chapter 5)</Text>
+            <Text style={[styles.modalTitle, { color: isDark ? '#f7fafc' : '#1a202c' }]}>Books (Chapter 5)</Text>
             <Pressable style={styles.closeButton} onPress={() => setShowBooksModal(false)}>
               <Text style={{ fontSize: 18, color: isDark ? '#f7fafc' : '#1a202c' }}>✕</Text>
             </Pressable>

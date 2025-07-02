@@ -281,8 +281,8 @@ export default function OnboardingScreen() {
   const [disclaimerAccepted, setDisclaimerAccepted] = useState(false);
   
   // Device registration state
-  const [deviceInfo, setDeviceInfo] = useState<DeviceRegistrationInfo | null>(null);
-  const [isCheckingDevice, setIsCheckingDevice] = useState(true);
+  // const [deviceInfo, setDeviceInfo] = useState<DeviceRegistrationInfo | null>(null);
+  // const [isCheckingDevice, setIsCheckingDevice] = useState(true);
 
   const [age, setAge] = useState('');
   const [agreedAmount, setAgreedAmount] = useState('');
@@ -304,25 +304,7 @@ export default function OnboardingScreen() {
       }
     }
 
-    async function checkDeviceRegistrationStatus() {
-      try {
-        setIsCheckingDevice(true);
-        const deviceId = await getDeviceId();
-        const deviceRegistrationInfo = await checkDeviceRegistration(deviceId);
-        
-        if (deviceRegistrationInfo) {
-          setDeviceInfo(deviceRegistrationInfo);
-          console.log('[Onboarding] Device already registered with email:', deviceRegistrationInfo.learnerEmail);
-        }
-      } catch (error) {
-        console.error('[Onboarding] Error checking device registration:', error);
-      } finally {
-        setIsCheckingDevice(false);
-      }
-    }
-
     checkAuthAndOnboarding();
-    checkDeviceRegistrationStatus();
   }, []);
 
   // Track onboarding screen view
@@ -409,76 +391,21 @@ export default function OnboardingScreen() {
       case 0:
         return (
           <View style={[styles.step, { justifyContent: 'flex-start', paddingTop: 40 }]} testID="welcome-step">
-            {!deviceInfo && (
-              <>
-                <View style={{ width: '100%', height: 340, marginBottom: 40, justifyContent: 'center', alignItems: 'center', paddingTop: 40 }}>
-                  <Image
-                    source={require('../assets/images/dimpo/reading.png')}
-                    style={{ width: 220, height: 220, resizeMode: 'contain', marginTop: 60 }}
-                    testID="welcome-image"
-                  />
-                </View>
-                <View style={[styles.textContainer, { paddingHorizontal: 20 }]} testID="welcome-text-container">
-                  <ThemedText style={[styles.welcomeTitle, { fontSize: 24, marginBottom: 24, color: isDark ? '#FFFFFF' : '#1E293B' }]} testID="welcome-title">
-                    Welcome to Dimpo Reads
-                  </ThemedText>
-                  <ThemedText style={[styles.welcomeText, { fontSize: 20, lineHeight: 32, marginBottom: 24, color: isDark ? '#E2E8F0' : '#475569' }]} testID="welcome-description">
-                    Read amazing stories and earn an allowance! Start your reading adventure today.
-                  </ThemedText>
-                </View>
-              </>
-            )}
-            {/* Device Registration Info */}
-            {isCheckingDevice && (
-              <View style={[styles.deviceInfoContainer, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.05)' }]}>
-                <ThemedText style={[styles.deviceInfoText, { color: isDark ? '#FFFFFF' : '#1E293B' }]}>
-                  Checking device registration...
-                </ThemedText>
-              </View>
-            )}
-            {!isCheckingDevice && deviceInfo && (
-              <View style={[styles.deviceInfoContainer, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.05)' }]}>
-                <ThemedText style={[styles.deviceInfoTitle, { color: isDark ? '#FFFFFF' : '#1E293B' }]}>
-                  📱 Device Already Registered
-                </ThemedText>
-                <View style={{ height: 8 }} />
-                <ThemedText style={[styles.deviceInfoText, { color: isDark ? '#FFFFFF' : '#1E293B' }]}>
-                  This device is linked to:
-                </ThemedText>
-                <ThemedText style={[styles.deviceInfoEmail, { color: isDark ? '#FFFFFF' : '#1E293B' }]}>
-                  {deviceInfo.learnerEmail}
-                </ThemedText>
-                <View style={[styles.deviceInfoDivider, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)' }]} />
-                <ThemedText style={[styles.deviceInfoSubtext, { color: isDark ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.6)' }]}>
-                  Registered on: {new Date(deviceInfo.registrationDate).toLocaleDateString()}
-                </ThemedText>
-                <ThemedText style={[styles.deviceInfoWarning, { color: isDark ? '#FBBF24' : '#D97706' }]}>
-                  Please login to continue using this device.
-                </ThemedText>
-                <TouchableOpacity
-                  style={[styles.continueWithAccountButton, { backgroundColor: isDark ? '#FFFFFF' : '#1E293B' }]}
-                  onPress={() => {
-                    analytics.track('reading_onboarding_device_login_pressed', {
-                      device_email: deviceInfo.learnerEmail,
-                      registration_date: deviceInfo.registrationDate,
-                      step_name: 'welcome'
-                    });
-                    // Navigate to login with the email pre-filled
-                    router.push({
-                      pathname: '/login',
-                      params: {
-                        email: deviceInfo.learnerEmail
-                      }
-                    });
-                  }}
-                  testID="continue-with-account-button"
-                >
-                  <ThemedText style={[styles.continueWithAccountButtonText, { color: isDark ? '#1B1464' : '#FFFFFF' }]}>
-                    Login
-                  </ThemedText>
-                </TouchableOpacity>
-              </View>
-            )}
+            <View style={{ width: '100%', height: 340, marginBottom: 40, justifyContent: 'center', alignItems: 'center', paddingTop: 40 }}>
+              <Image
+                source={require('../assets/images/dimpo/reading.png')}
+                style={{ width: 220, height: 220, resizeMode: 'contain', marginTop: 60 }}
+                testID="welcome-image"
+              />
+            </View>
+            <View style={[styles.textContainer, { paddingHorizontal: 20 }]} testID="welcome-text-container">
+              <ThemedText style={[styles.welcomeTitle, { fontSize: 24, marginBottom: 24, color: isDark ? '#FFFFFF' : '#1E293B' }]} testID="welcome-title">
+                Welcome to Dimpo Reads
+              </ThemedText>
+              <ThemedText style={[styles.welcomeText, { fontSize: 20, lineHeight: 32, marginBottom: 24, color: isDark ? '#E2E8F0' : '#475569' }]} testID="welcome-description">
+                Read amazing stories and earn an allowance! Start your reading adventure today.
+              </ThemedText>
+            </View>
           </View>
         );
       case 1:
@@ -680,62 +607,17 @@ export default function OnboardingScreen() {
     }
   };
 
-  const canProceed = () => {
-    // Block progression if device is already registered
-    if (deviceInfo) {
-      return false;
-    }
-    switch (step) {
-      case 0:
-      case 1:
-      case 2:
-        return true;
-      case 3:
-        return !!agreedAmount;
-      default:
-        return false;
-    }
-  };
-
   return (
     <LinearGradient
       colors={isDark ? ['#1B1464', '#2B2F77'] : ['#F8FAFC', '#E2E8F0']}
       style={[styles.container, { paddingTop: insets.top }]}
     >
       <View style={styles.content}>
-        {/* Device Registration Banner */}
-        {!isCheckingDevice && deviceInfo && step > 0 && (
-          <View style={[styles.deviceRegistrationBanner, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)' }]}>
-            <ThemedText style={[styles.deviceRegistrationBannerText, { color: isDark ? '#FFFFFF' : '#1E293B' }]}>
-              📱 Device linked to {deviceInfo.learnerEmail} - Login required
-            </ThemedText>
-            <TouchableOpacity
-              style={[styles.deviceRegistrationBannerButton, { backgroundColor: isDark ? '#FFFFFF' : '#1E293B' }]}
-              onPress={() => {
-                analytics.track('reading_onboarding_device_banner_login_pressed', {
-                  device_email: deviceInfo.learnerEmail,
-                  step_name: getStepName(step)
-                });
-                router.push({
-                  pathname: '/login',
-                  params: {
-                    email: deviceInfo.learnerEmail
-                  }
-                });
-              }}
-            >
-              <ThemedText style={[styles.deviceRegistrationBannerButtonText, { color: isDark ? '#1B1464' : '#FFFFFF' }]}>
-                Login
-              </ThemedText>
-            </TouchableOpacity>
-          </View>
-        )}
-        
         <View style={styles.stepContainer}>
           {renderStep()}
         </View>
 
-        {(step < 4) && !deviceInfo && (
+        {(step < 4) && (
           <View style={styles.buttonContainer} testID="navigation-buttons">
             {step === 0 ? (
               <>
@@ -791,9 +673,7 @@ export default function OnboardingScreen() {
                   style={[
                     styles.button,
                     { 
-                      backgroundColor: (!canProceed() || !!deviceInfo) 
-                        ? (isDark ? '#94A3B8' : '#CBD5E1') 
-                        : (isDark ? '#FFFFFF' : '#1E293B')
+                      backgroundColor: (isDark ? '#FFFFFF' : '#1E293B')
                     }
                   ]}
                   onPress={() => {
@@ -802,19 +682,15 @@ export default function OnboardingScreen() {
                       from_step: step,
                       to_step: step + 1,
                       step_name: getStepName(step),
-                      can_proceed: canProceed()
                     });
                     handleNextStep();
                   }}
-                  disabled={!canProceed()}
                   testID="next-step-button"
                 >
                   <ThemedText style={[
                     styles.buttonText,
                     { 
-                      color: (!canProceed() || !!deviceInfo)
-                        ? (isDark ? '#E2E8F0' : '#64748B')
-                        : (isDark ? '#4d5ad3' : '#FFFFFF')
+                      color: (isDark ? '#FFFFFF' : '#1E293B')
                     }
                   ]}>
                     Continue! ⭐
