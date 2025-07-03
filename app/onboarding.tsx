@@ -14,6 +14,8 @@ import { Image, ScrollView, StyleSheet, TouchableOpacity, View, TextInput } from
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
 import { ThemedText } from '../components/ThemedText';
+import { DailyLimitSelector } from './components/DailyLimitSelector';
+import { setDailyEarningLimit } from '@/services/dailyEarningLimit';
 
 const SUPERHERO_NAMES = [
   // Reading Heroes
@@ -266,6 +268,30 @@ async function createGuestAccount({ selectedAvatar, signUp }: GuestAccountParams
   }
 }
 
+// Helper to chunk array into rows of 4 (move this above renderStep)
+function chunkArray(arr: any[], size: number) {
+  return arr.reduce((acc: any[], _, i: number) => (i % size ? acc : [...acc, arr.slice(i, i + size)]), []);
+}
+
+// Add a color palette for amount/limit buttons
+const AMOUNT_COLORS = [
+  '#F59E42', // orange
+  '#4F46E5', // indigo
+  '#10B981', // green
+  '#F43F5E', // pink
+  '#6366F1', // blue
+  '#FBBF24', // yellow
+  '#3B82F6', // sky
+  '#A21CAF', // purple
+  '#059669', // emerald
+  '#DC2626', // red
+  '#0EA5E9', // cyan
+  '#E11D48', // rose
+  '#F472B6', // fuchsia
+  '#22D3EE', // teal
+  '#FACC15', // amber
+];
+
 export default function OnboardingScreen() {
   const [step, setStep] = useState(0);
   const [selectedAvatar, setSelectedAvatar] = useState<string>('1');
@@ -286,6 +312,7 @@ export default function OnboardingScreen() {
 
   const [age, setAge] = useState('');
   const [agreedAmount, setAgreedAmount] = useState('');
+  const [dailyLimit, setDailyLimit] = useState(0);
 
   useEffect(() => {
     async function checkAuthAndOnboarding() {
@@ -320,7 +347,8 @@ export default function OnboardingScreen() {
   const handleNextStep = () => {
     setErrors({ curriculum: '' });
 
-    if (step === 3) { // Now registration step is at 3
+    // Only complete onboarding after avatar selection (step 5)
+    if (step === 5) {
       handleComplete();
     } else {
       setStep(step + 1);
@@ -338,6 +366,8 @@ export default function OnboardingScreen() {
       case 3:
         return 'deal';
       case 4:
+        return 'daily_limit';
+      case 5:
         return 'avatar';
       default:
         return 'unknown';
@@ -363,6 +393,11 @@ export default function OnboardingScreen() {
         age: age,
         agreedAmount: agreedAmount
       }));
+
+      // Persist the selected daily limit
+      if (dailyLimit) {
+        await setDailyEarningLimit(dailyLimit);
+      }
 
       // Navigate to registration screen
       router.push({
@@ -451,60 +486,66 @@ export default function OnboardingScreen() {
       case 3:
         // Contract/Deal screen
         const amountOptions = ['0.5','1','2','3','4','5','10','20','50','100','200','500'];
-        // Helper to chunk array into rows of 4
-        const chunkArray = (arr: any[], size: number) => arr.reduce((acc: any[], _, i: number) => (i % size ? acc : [...acc, arr.slice(i, i + size)]), []);
         const amountRows = chunkArray(amountOptions, 4);
         return (
           <View style={[styles.step, { justifyContent: 'flex-start', paddingTop: 40 }]} testID="deal-step">
             <View style={[styles.textContainer, { paddingHorizontal: 20 }]} testID="deal-text-container">
               <ThemedText style={[styles.welcomeTitle, { fontSize: 26, marginBottom: 20, color: isDark ? '#FFFFFF' : '#1E293B' }]} testID="deal-title">
-                Make a Deal! 🤝
+                Make a Deal with Your Parent! 🤝
               </ThemedText>
               <ThemedText style={[styles.welcomeText, { fontSize: 18, lineHeight: 28, marginBottom: 20, color: isDark ? '#E2E8F0' : '#475569' }]} testID="deal-description">
-              Ask your parents: "How much can I earn for every chapter I read?"
-              Each chapter takes just 8–10 minutes — like a snack break for your brain!
+                Talk to your parent or guardian and agree on an amount you can earn <ThemedText style={{ fontWeight: 'bold' }}>per child</ThemedText> for every chapter you read.
+                Each chapter takes just 8–10 minutes — like a snack break for your brain!
               </ThemedText>
-              <ThemedText style={[styles.welcomeText, { fontSize: 16, marginBottom: 12, color: isDark ? '#FBBF24' : '#D97706' }]}>Select your amount per chapter:</ThemedText>
+              <ThemedText style={[styles.welcomeText, { fontSize: 16, marginBottom: 12, color: isDark ? '#FBBF24' : '#D97706' }]}>Select your amount <ThemedText style={{ fontWeight: 'bold' }}>per child</ThemedText> per chapter:</ThemedText>
               <View style={{ gap: 12, marginTop: 8 }}>
                 {amountRows.map((row: any[], rowIdx: number) => (
                   <View key={rowIdx} style={{ flexDirection: 'row', justifyContent: 'center', marginBottom: 8 }}>
-                    {row.map((option: string) => (
-                      <TouchableOpacity
-                        key={option}
-                        style={{
-                          width: 72,
-                          height: 56,
-                          borderRadius: 16,
-                          backgroundColor: agreedAmount === option 
-                            ? (isDark ? '#4F46E5' : '#1E293B') 
-                            : (isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.05)'),
-                          justifyContent: 'center',
-                          alignItems: 'center',
-                          marginHorizontal: 6,
-                          borderWidth: agreedAmount === option ? 2 : 1,
-                          borderColor: agreedAmount === option 
-                            ? (isDark ? '#fff' : '#1E293B') 
-                            : (isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)')
-                        }}
-                        onPress={() => {
-                          analytics.track('reading_onboarding_amount_selected', {
-                            amount: option,
-                            step_name: 'deal',
-                            step_number: 3
-                          });
-                          setAgreedAmount(option);
-                        }}
-                        testID={`amount-btn-${option}`}
-                      >
-                        <ThemedText style={{ 
-                          color: agreedAmount === option 
-                            ? (isDark ? '#fff' : '#FFFFFF') 
-                            : (isDark ? '#fff' : '#1E293B'), 
-                          fontSize: 20, 
-                          fontWeight: '700' 
-                        }}>{option}</ThemedText>
-                      </TouchableOpacity>
-                    ))}
+                    {row.map((option: string, colIdx: number) => {
+                      const idx = rowIdx * 4 + colIdx;
+                      const bgColor = agreedAmount === option
+                        ? (isDark ? '#4F46E5' : '#1E293B')
+                        : AMOUNT_COLORS[idx % AMOUNT_COLORS.length];
+                      return (
+                        <TouchableOpacity
+                          key={option}
+                          style={{
+                            width: 72,
+                            height: 56,
+                            borderRadius: 16,
+                            backgroundColor: bgColor,
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                            marginHorizontal: 6,
+                            borderWidth: agreedAmount === option ? 2 : 1,
+                            borderColor: agreedAmount === option
+                              ? (isDark ? '#fff' : '#1E293B')
+                              : (isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)'),
+                            shadowColor: agreedAmount === option ? bgColor : undefined,
+                            shadowOpacity: agreedAmount === option ? 0.4 : 0,
+                            shadowRadius: agreedAmount === option ? 8 : 0,
+                            elevation: agreedAmount === option ? 5 : 0,
+                          }}
+                          onPress={() => {
+                            analytics.track('reading_onboarding_amount_selected', {
+                              amount: option,
+                              step_name: 'deal',
+                              step_number: 3
+                            });
+                            setAgreedAmount(option);
+                          }}
+                          testID={`amount-btn-${option}`}
+                        >
+                          <ThemedText style={{
+                            color: agreedAmount === option
+                              ? (isDark ? '#fff' : '#FFFFFF')
+                              : (isDark ? '#fff' : '#1E293B'),
+                            fontSize: 20,
+                            fontWeight: '700'
+                          }}>{option}</ThemedText>
+                        </TouchableOpacity>
+                      );
+                    })}
                   </View>
                 ))}
               </View>
@@ -512,7 +553,82 @@ export default function OnboardingScreen() {
           </View>
         );
       case 4:
-        // Avatar selection step, now leads directly to registration
+        // Daily Limit selection step (new, styled like deal screen)
+        const limitOptions = ['1', '5', '10', '25', '50', '75', '100', '200',  '500', '1000','5000','10000'];
+        const limitRows = chunkArray(limitOptions, 4);
+        const agreedAmountNum = parseFloat(agreedAmount) || 0;
+        return (
+          <View style={[styles.step, { justifyContent: 'flex-start', paddingTop: 40 }]} testID="daily-limit-step">
+            <View style={[styles.textContainer, { paddingHorizontal: 20 }]} testID="daily-limit-text-container">
+              <ThemedText style={[styles.welcomeTitle, { fontSize: 26, marginBottom: 20, color: isDark ? '#FFFFFF' : '#1E293B' }]} testID="daily-limit-title">
+                Set a Daily Earning Limit with Your Parent! 💰
+              </ThemedText>
+              <ThemedText style={[styles.welcomeText, { fontSize: 18, lineHeight: 28, marginBottom: 20, color: isDark ? '#E2E8F0' : '#475569' }]} testID="daily-limit-description">
+                Ask your parent or guardian: What is the maximum you can earn per child each day?
+              </ThemedText>
+              <ThemedText style={[styles.welcomeText, { fontSize: 16, marginBottom: 12, color: isDark ? '#FBBF24' : '#D97706' }]}>This limit is per child and resets every day at midnight.</ThemedText>
+              <ThemedText style={[styles.welcomeText, { fontSize: 16, marginBottom: 12, color: isDark ? '#FBBF24' : '#D97706' }]}>Select your daily earning limit per child:</ThemedText>
+              <View style={{ gap: 12, marginTop: 8 }}>
+                {limitRows.map((row: string[], rowIdx: number) => (
+                  <View key={rowIdx} style={{ flexDirection: 'row', justifyContent: 'center', marginBottom: 8 }}>
+                    {row.map((option: string, colIdx: number) => {
+                      const idx = rowIdx * 4 + colIdx;
+                      const optionNum = parseFloat(option);
+                      const isDisabled = optionNum < agreedAmountNum;
+                      const bgColor = dailyLimit.toString() === option
+                        ? (isDark ? '#4F46E5' : '#1E293B')
+                        : AMOUNT_COLORS[idx % AMOUNT_COLORS.length];
+                      return (
+                        <TouchableOpacity
+                          key={option}
+                          style={{
+                            width: 72,
+                            height: 56,
+                            borderRadius: 16,
+                            backgroundColor: bgColor,
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                            marginHorizontal: 6,
+                            borderWidth: dailyLimit.toString() === option ? 2 : 1,
+                            borderColor: dailyLimit.toString() === option
+                              ? (isDark ? '#fff' : '#1E293B')
+                              : (isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)'),
+                            opacity: isDisabled ? 0.4 : 1,
+                            shadowColor: dailyLimit.toString() === option ? bgColor : undefined,
+                            shadowOpacity: dailyLimit.toString() === option ? 0.4 : 0,
+                            shadowRadius: dailyLimit.toString() === option ? 8 : 0,
+                            elevation: dailyLimit.toString() === option ? 5 : 0,
+                          }}
+                          onPress={() => {
+                            if (isDisabled) return;
+                            analytics.track('reading_onboarding_daily_limit_selected', {
+                              limit: option,
+                              step_name: 'daily_limit',
+                              step_number: 4
+                            });
+                            setDailyLimit(Number(option));
+                          }}
+                          testID={`daily-limit-btn-${option}`}
+                          disabled={isDisabled}
+                        >
+                          <ThemedText style={{
+                            color: dailyLimit.toString() === option
+                              ? (isDark ? '#fff' : '#FFFFFF')
+                              : (isDark ? '#fff' : '#1E293B'),
+                            fontSize: 20,
+                            fontWeight: '700'
+                          }}>{option}</ThemedText>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                ))}
+              </View>
+            </View>
+          </View>
+        );
+      case 5:
+        // Avatar selection step
         return (
           <View style={styles.step} testID="avatar-step">
             <View style={styles.textContainer}>
@@ -553,7 +669,7 @@ export default function OnboardingScreen() {
                       analytics.track('reading_onboarding_avatar_selected', {
                         avatar_id: avatarId,
                         step_name: 'avatar',
-                        step_number: 4
+                        step_number: 5
                       });
                       setSelectedAvatar(avatarId);
                     }}
@@ -575,24 +691,7 @@ export default function OnboardingScreen() {
             <View style={styles.authOptionsContainer}>
               <TouchableOpacity
                 style={[styles.authButton, { backgroundColor: isDark ? '#4F46E5' : '#1E293B' }]}
-                onPress={() => {
-                  analytics.track('reading_onboarding_registration_started', {
-                    avatar_id: selectedAvatar,
-                    agreed_amount: agreedAmount,
-                    age: age,
-                    step_name: 'avatar',
-                    step_number: 4
-                  });
-                  router.push({
-                    pathname: '/register',
-                    params: {
-                      curriculum: 'CAPS',
-                      avatar: selectedAvatar,
-                      age: age,
-                      agreedAmount: agreedAmount
-                    }
-                  });
-                }}
+                onPress={handleNextStep}
                 testID="create-account-button"
               >
                 <ThemedText style={[styles.authButtonText, { color: '#FFFFFF' }]}>
@@ -647,7 +746,7 @@ export default function OnboardingScreen() {
                   }}
                   testID="start-onboarding-button"
                 >
-                  <ThemedText style={[styles.buttonText, { color: isDark ? '#4d5ad3' : '#FFFFFF' }]}>
+                  <ThemedText style={[styles.buttonText, { color: isDark ? '#4d5ad3' : '#FFFFFF' }]}> 
                     Let's Read! 📚
                   </ThemedText>
                 </TouchableOpacity>
@@ -672,11 +771,11 @@ export default function OnboardingScreen() {
                 <TouchableOpacity
                   style={[
                     styles.button,
-                    { 
-                      backgroundColor: (isDark ? '#FFFFFF' : '#1E293B')
-                    }
+                    { backgroundColor: isDark ? '#FFFFFF' : '#1E293B' },
+                    (step === 3 && !agreedAmount) && { opacity: 0.5 }
                   ]}
                   onPress={() => {
+                    if (step === 3 && !agreedAmount) return;
                     analytics.track('reading_onboarding_navigation', {
                       action: 'next_step',
                       from_step: step,
@@ -686,18 +785,63 @@ export default function OnboardingScreen() {
                     handleNextStep();
                   }}
                   testID="next-step-button"
+                  disabled={step === 3 && !agreedAmount}
                 >
                   <ThemedText style={[
                     styles.buttonText,
-                    { 
-                      color: (isDark ? '#FFFFFF' : '#1E293B')
-                    }
+                    { color: isDark ? '#1E293B' : '#FFFFFF' }
                   ]}>
                     Continue! ⭐
                   </ThemedText>
                 </TouchableOpacity>
               </>
             )}
+          </View>
+        )}
+
+        {(step === 4) && (
+          <View style={styles.buttonContainer} testID="navigation-buttons">
+            <TouchableOpacity
+              style={[styles.button, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)' }]}
+              onPress={() => {
+                analytics.track('reading_onboarding_navigation', {
+                  action: 'previous_step',
+                  from_step: step,
+                  to_step: step - 1,
+                  step_name: getStepName(step)
+                });
+                setStep(step - 1);
+              }}
+              testID="previous-step-button"
+            >
+              <ThemedText style={[styles.buttonText, { color: isDark ? '#FFFFFF' : '#1E293B' }]}>Back</ThemedText>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.button,
+                { backgroundColor: isDark ? '#FFFFFF' : '#1E293B' },
+                !dailyLimit && { opacity: 0.5 }
+              ]}
+              onPress={() => {
+                if (!dailyLimit) return;
+                analytics.track('reading_onboarding_navigation', {
+                  action: 'next_step',
+                  from_step: step,
+                  to_step: step + 1,
+                  step_name: getStepName(step),
+                });
+                handleNextStep();
+              }}
+              testID="next-step-button"
+              disabled={!dailyLimit}
+            >
+              <ThemedText style={[
+                styles.buttonText,
+                { color: isDark ? '#1E293B' : '#FFFFFF' }
+              ]}>
+                Continue! ⭐
+              </ThemedText>
+            </TouchableOpacity>
           </View>
         )}
       </View>

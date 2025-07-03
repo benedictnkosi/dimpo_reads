@@ -12,15 +12,28 @@ interface DailyLimitSelectorProps {
   onClose: () => void;
   onLimitChanged: (newLimit: number) => void;
   currentLimit?: number;
+  title?: string;
+  subtitle?: string;
+  description?: string;
+  label?: string;
+  showConfirmation?: boolean;
+  confirmButtonText?: string;
+  successToast?: boolean;
 }
 
-const LIMIT_OPTIONS = ['1', '5', '10', '25', '50', '75', '100','200', '300', '500', '750', '1000'];
-
+const LIMIT_OPTIONS = ['1', '5', '10', '25', '50', '75', '100', '200',  '500', '1000','5000','10000'];
 export function DailyLimitSelector({ 
   isVisible, 
   onClose, 
   onLimitChanged, 
-  currentLimit = 50 
+  currentLimit = 50,
+  title,
+  subtitle,
+  description,
+  label,
+  showConfirmation = true,
+  confirmButtonText = 'Update Limit',
+  successToast = true
 }: DailyLimitSelectorProps) {
   const { colors, isDark } = useTheme();
   const [selectedLimit, setSelectedLimit] = useState(currentLimit.toString());
@@ -43,6 +56,41 @@ export function DailyLimitSelector({
       return;
     }
 
+    if (!showConfirmation) {
+      setIsSaving(true);
+      try {
+        const newLimit = parseInt(selectedLimit);
+        await setDailyEarningLimit(newLimit);
+        onLimitChanged(newLimit);
+        if (successToast) {
+          Toast.show({
+            type: 'success',
+            text1: 'Daily Limit Updated',
+            text2: `You can now earn up to ${selectedLimit} per day`,
+            position: 'top',
+            topOffset: 60,
+            visibilityTime: 3000,
+            autoHide: true
+          });
+        }
+        onClose();
+      } catch (error) {
+        console.error('Error updating daily earning limit:', error);
+        Toast.show({
+          type: 'error',
+          text1: 'Error',
+          text2: 'Failed to update daily earning limit',
+          position: 'top',
+          topOffset: 60,
+          visibilityTime: 3000,
+          autoHide: true
+        });
+      } finally {
+        setIsSaving(false);
+      }
+      return;
+    }
+
     Alert.alert(
       'Update Daily Earning Limit',
       `Are you sure you want to change your daily earning limit from ${currentLimit} to ${selectedLimit}?`,
@@ -58,15 +106,17 @@ export function DailyLimitSelector({
               await setDailyEarningLimit(newLimit);
               onLimitChanged(newLimit);
               
-              Toast.show({
-                type: 'success',
-                text1: 'Daily Limit Updated',
-                text2: `You can now earn up to ${selectedLimit} per day`,
-                position: 'top',
-                topOffset: 60,
-                visibilityTime: 3000,
-                autoHide: true
-              });
+              if (successToast) {
+                Toast.show({
+                  type: 'success',
+                  text1: 'Daily Limit Updated',
+                  text2: `You can now earn up to ${selectedLimit} per day`,
+                  position: 'top',
+                  topOffset: 60,
+                  visibilityTime: 3000,
+                  autoHide: true
+                });
+              }
 
               onClose();
             } catch (error) {
@@ -105,19 +155,19 @@ export function DailyLimitSelector({
           
           <View style={styles.header}>
             <ThemedText style={styles.title}>
-              Set Daily Earning Limit! 💰
+              {title || 'Set Daily Earning Limit! 💰'}
             </ThemedText>
             <ThemedText style={styles.subtitle}>
-              How much can you earn each day?
+              {subtitle || 'How much can you earn each day?'}
             </ThemedText>
             <ThemedText style={styles.description}>
-              This limit resets every day at midnight
+              {description || 'This limit resets every day at midnight'}
             </ThemedText>
           </View>
 
           <View style={styles.limitSection}>
             <ThemedText style={styles.limitLabel}>
-              Select your daily earning limit:
+              {label || 'Select your daily earning limit:'}
             </ThemedText>
             
             <View style={styles.limitGrid}>
@@ -167,7 +217,7 @@ export function DailyLimitSelector({
               disabled={isSaving}
             >
               <ThemedText style={styles.saveButtonText}>
-                {isSaving ? 'Updating...' : 'Update Limit'}
+                {isSaving ? (confirmButtonText === 'Set Limit' ? 'Setting...' : 'Updating...') : confirmButtonText}
               </ThemedText>
             </TouchableOpacity>
           </View>

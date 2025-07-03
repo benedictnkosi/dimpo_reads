@@ -16,6 +16,14 @@ export function DailyEarningLimitBanner({ dailyEarningLimitInfo }: DailyEarningL
   const isLimitReached = dailyEarningLimitInfo.isLimitReached;
   const remainingAmount = dailyEarningLimitInfo.remainingAmount;
 
+  // Format numbers as amounts with two decimal places
+  const formatAmount = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(amount);
+  };
+
   return (
     <LinearGradient
       colors={
@@ -39,8 +47,8 @@ export function DailyEarningLimitBanner({ dailyEarningLimitInfo }: DailyEarningL
           </ThemedText>
           <ThemedText style={[styles.subtitle, { color: colors.textSecondary }]}> 
             {isLimitReached
-              ? `You've earned your maximum of ${dailyEarningLimitInfo.limit} today.`
-              : `Earnings: ${dailyEarningLimitInfo.earnedToday} coins  | ${remainingAmount} coins left today`}
+              ? `You've earned your maximum of ${formatAmount(dailyEarningLimitInfo.limit)} today.`
+              : `Earnings: ${formatAmount(dailyEarningLimitInfo.earnedToday)}`}
           </ThemedText>
           <View style={styles.progressContainer}>
             <View style={[styles.progressBar, { backgroundColor: isDark ? '#444' : colors.textSecondary + '20' }]}> 
@@ -52,7 +60,7 @@ export function DailyEarningLimitBanner({ dailyEarningLimitInfo }: DailyEarningL
               />
             </View>
             <ThemedText style={[styles.progressText, { color: colors.textSecondary }]}> 
-              {dailyEarningLimitInfo.earnedToday} / {dailyEarningLimitInfo.limit}
+              {formatAmount(dailyEarningLimitInfo.earnedToday)} / {formatAmount(dailyEarningLimitInfo.limit)}
             </ThemedText>
           </View>
         </View>

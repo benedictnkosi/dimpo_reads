@@ -17,11 +17,6 @@ export function Paywall({ onSuccess, onClose, offerings }: PaywallProps) {
         if (!user?.uid) return;
 
         try {
-            // Track paywall load event
-            await analytics.track('paywall_shown', {
-                userId: user.uid,
-                timestamp: new Date().toISOString()
-            });
 
             // Set the current user's UID as the RevenueCat identifier
             await Purchases.logIn(user.uid);
@@ -51,7 +46,7 @@ export function Paywall({ onSuccess, onClose, offerings }: PaywallProps) {
             // Check if purchase was successful
             if (result === PAYWALL_RESULT.PURCHASED) {
                 // Track successful purchase
-                await analytics.track('purchase_successful', {
+                await analytics.track('reading_purchase_successful', {
                     userId: user.uid,
                     timestamp: new Date().toISOString()
                 });
@@ -60,16 +55,11 @@ export function Paywall({ onSuccess, onClose, offerings }: PaywallProps) {
                 await new Promise(resolve => setTimeout(resolve, 1000));
                 onSuccess?.();
             } else {
-                // Track paywall closed without purchase
-                await analytics.track('paywall_closed', {
-                    userId: user.uid,
-                    timestamp: new Date().toISOString()
-                });
                 onClose?.();
             }
         } catch (error) {
             // Track paywall error
-            await analytics.track('paywall_error', {
+            await analytics.track('reading_paywall_error', {
                 userId: user.uid,
                 error: error instanceof Error ? error.message : 'Unknown error',
                 timestamp: new Date().toISOString()

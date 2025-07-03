@@ -196,7 +196,7 @@ export function ContractAmountSelector({
               disabled={isSaving}
             >
               <ThemedText style={styles.saveButtonText}>
-                {isSaving ? 'Updating...' : 'Update Contract'}
+                {isSaving ? 'Updating...' : 'Update'}
               </ThemedText>
             </TouchableOpacity>
           </View>

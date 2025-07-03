@@ -56,6 +56,7 @@ import { getDailyEarningLimitInfo, DailyEarningLimitInfo } from '@/services/dail
 import { 
   getLearner
 } from '@/services/api';
+import { UpgradeToProButton } from './components/UpgradeToProButton';
 
 // Avatar images mapping
 const AVATAR_IMAGES: { [key: string]: any } = {
@@ -556,7 +557,7 @@ export default function HomeScreen() {
   const handleShareApp = async () => {
     try {
       // Track app sharing
-      analytics.track('app_shared', {
+      analytics.track('reading_app_shared', {
         platform: 'home_screen',
         share_method: 'native_share'
       });
@@ -1539,8 +1540,7 @@ export default function HomeScreen() {
               </View>
             )}
             
-            
-            
+
             {/* Combined Balance and Streak Card */}
             <LinearGradient
               colors={TOTAL_BALANCE_GRADIENT}
@@ -1647,30 +1647,112 @@ export default function HomeScreen() {
 
             {/* Other Action Buttons */}
             <View style={styles.actionButtonsContainer}>
-              {/* Continue Reading Card or Start New Book Card */}
-              {(() => {
-                if (currentReading && smartBookDetails) {
-                  if (currentBook && jugs.length > 0) {
-                    return (
-                      <ContinueReadingCard
-                        book={{ ...currentBook, images: continueImage }}
-                        onPress={jugs.length === 0 ? () => {
-                          Alert.alert(
-                            'Create Savings Goal First',
-                            'You need to create at least one savings goal before you can continue reading. Reading helps you earn money for your goals!',
-                            [
-                              { text: 'OK', style: 'default' },
-                              { text: 'Create Goal', style: 'default', onPress: () => setShowAddModal(true) }
-                            ]
-                          );
-                        } : handleContinueReading}
-                        isLoading={isReadingLoading}
-                        isNextChapter={smartBookDetails.isCompleted && smartBookDetails.hasNextChapter}
-                        disabled={jugs.length === 0}
-                      />
-                    );
+              {/* Upgrade Card if chapter limit reached */}
+              {user?.uid && !isPremium && completedChaptersCount >= 10 ? (
+                <View style={{
+                  backgroundColor: colors.surface,
+                  borderRadius: 18,
+                  padding: 24,
+                  marginBottom: 20,
+                  alignItems: 'center',
+                  borderWidth: 2,
+                  borderColor: colors.primary,
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.12,
+                  shadowRadius: 8,
+                  elevation: 4,
+                }}>
+                  <ThemedText style={{ fontSize: 32, marginBottom: 8 }}>🚀</ThemedText>
+                  <ThemedText style={{ fontSize: 22, fontWeight: 'bold', color: colors.primary, marginBottom: 8, textAlign: 'center' }}>
+                    Chapter Limit Reached!
+                  </ThemedText>
+                  <ThemedText style={{ fontSize: 16, color: colors.textSecondary, marginBottom: 18, textAlign: 'center' }}>
+                    You've completed your 10 free chapters. Upgrade to Premium for unlimited reading and savings!
+                  </ThemedText>
+                  <UpgradeToProButton
+                    text="Upgrade to Premium"
+                    onPress={showPaywall}
+                  />
+                </View>
+              ) : (
+                // Continue Reading Card or Start New Book Button (existing logic)
+                (() => {
+                  if (currentReading && smartBookDetails) {
+                    if (currentBook && jugs.length > 0) {
+                      return (
+                        <ContinueReadingCard
+                          book={{ ...currentBook, images: continueImage }}
+                          onPress={jugs.length === 0 ? () => {
+                            Alert.alert(
+                              'Create Savings Goal First',
+                              'You need to create at least one savings goal before you can continue reading. Reading helps you earn money for your goals!',
+                              [
+                                { text: 'OK', style: 'default' },
+                                { text: 'Create Goal', style: 'default', onPress: () => setShowAddModal(true) }
+                              ]
+                            );
+                          } : handleContinueReading}
+                          isLoading={isReadingLoading}
+                          isNextChapter={smartBookDetails.isCompleted && smartBookDetails.hasNextChapter}
+                          disabled={jugs.length === 0}
+                        />
+                      );
+                    } else {
+                      // Show add goal card when no current book and no savings goals
+                      if (jugs.length === 0) {
+                        return (
+                          <View style={styles.addGoalCard}>
+                            <View style={styles.addGoalContent}>
+                              <ThemedText style={styles.addGoalEmoji}>🎯</ThemedText>
+                              <ThemedText style={styles.addGoalTitle}>Create Your First Savings Goal</ThemedText>
+                              <ThemedText style={styles.addGoalDescription}>
+                                Start your reading journey by creating a savings goal. Every chapter you read earns money for your goals!
+                              </ThemedText>
+                              <Pressable
+                                style={({ pressed }) => [
+                                  styles.addGoalButton,
+                                  pressed && styles.actionButtonPressed,
+                                ]}
+                                onPress={() => setShowAddModal(true)}
+                                accessibilityRole="button"
+                                accessibilityLabel="Create savings goal"
+                              >
+                                <ThemedText style={styles.addGoalButtonText}>➕ Create Goal</ThemedText>
+                              </Pressable>
+                            </View>
+                          </View>
+                        );
+                      }
+                      return (
+                        <LinearGradient
+                          colors={isDark ? ['#4F46E5', '#7C3AED'] : ['#3B82F6', '#8B5CF6']}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 0 }}
+                          style={[
+                            styles.mainActionButton,
+                            isReadingLoading && styles.actionButtonDisabled,
+                          ]}
+                        >
+                          <Pressable
+                            style={({ pressed }) => [
+                              { flex: 1, justifyContent: 'center', alignItems: 'center' },
+                              pressed && styles.actionButtonPressed,
+                            ]}
+                            onPress={handleStartReading}
+                            disabled={isReadingLoading}
+                            accessibilityRole="button"
+                            accessibilityLabel="Start new book"
+                          >
+                            <ThemedText style={styles.mainActionButtonText}>
+                              {isReadingLoading ? '⏳ Loading...' : '🚀 Start New Book'}
+                            </ThemedText>
+                          </Pressable>
+                        </LinearGradient>
+                      );
+                    }
                   } else {
-                    // Show add goal card when no current book and no savings goals
+                    // Show add goal card when no reading session and no savings goals
                     if (jugs.length === 0) {
                       return (
                         <View style={styles.addGoalCard}>
@@ -1695,7 +1777,6 @@ export default function HomeScreen() {
                         </View>
                       );
                     }
-                    
                     return (
                       <LinearGradient
                         colors={isDark ? ['#4F46E5', '#7C3AED'] : ['#3B82F6', '#8B5CF6']}
@@ -1714,7 +1795,7 @@ export default function HomeScreen() {
                           onPress={handleStartReading}
                           disabled={isReadingLoading}
                           accessibilityRole="button"
-                          accessibilityLabel="Start new book"
+                          accessibilityLabel="Start reading"
                         >
                           <ThemedText style={styles.mainActionButtonText}>
                             {isReadingLoading ? '⏳ Loading...' : '🚀 Start New Book'}
@@ -1723,61 +1804,8 @@ export default function HomeScreen() {
                       </LinearGradient>
                     );
                   }
-                } else {
-                  // Show add goal card when no reading session and no savings goals
-                  if (jugs.length === 0) {
-                    return (
-                      <View style={styles.addGoalCard}>
-                        <View style={styles.addGoalContent}>
-                          <ThemedText style={styles.addGoalEmoji}>🎯</ThemedText>
-                          <ThemedText style={styles.addGoalTitle}>Create Your First Savings Goal</ThemedText>
-                          <ThemedText style={styles.addGoalDescription}>
-                            Start your reading journey by creating a savings goal. Every chapter you read earns money for your goals!
-                          </ThemedText>
-                          <Pressable
-                            style={({ pressed }) => [
-                              styles.addGoalButton,
-                              pressed && styles.actionButtonPressed,
-                            ]}
-                            onPress={() => setShowAddModal(true)}
-                            accessibilityRole="button"
-                            accessibilityLabel="Create savings goal"
-                          >
-                            <ThemedText style={styles.addGoalButtonText}>➕ Create Goal</ThemedText>
-                          </Pressable>
-                        </View>
-                      </View>
-                    );
-                  }
-                  
-                  return (
-                    <LinearGradient
-                      colors={isDark ? ['#4F46E5', '#7C3AED'] : ['#3B82F6', '#8B5CF6']}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 0 }}
-                      style={[
-                        styles.mainActionButton,
-                        isReadingLoading && styles.actionButtonDisabled,
-                      ]}
-                    >
-                      <Pressable
-                        style={({ pressed }) => [
-                          { flex: 1, justifyContent: 'center', alignItems: 'center' },
-                          pressed && styles.actionButtonPressed,
-                        ]}
-                        onPress={handleStartReading}
-                        disabled={isReadingLoading}
-                        accessibilityRole="button"
-                        accessibilityLabel="Start reading"
-                      >
-                        <ThemedText style={styles.mainActionButtonText}>
-                          {isReadingLoading ? '⏳ Loading...' : '🚀 Start New Book'}
-                        </ThemedText>
-                      </Pressable>
-                    </LinearGradient>
-                  );
-                }
-              })()}
+                })()
+              )}
 
               {/* Report Button */}
               <QuickReport 

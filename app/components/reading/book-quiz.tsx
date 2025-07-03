@@ -175,12 +175,6 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, readingDura
                 const calculatedSpeed = Math.round((wordCount / readingDuration) * 60);
                 setReadingSpeed(calculatedSpeed);
                 
-                // Track analytics after calculating reading speed
-                analytics.track('reading_quiz_started', {
-                    userId: user?.uid,
-                    chapterId,
-                    readingSpeedWPM: calculatedSpeed
-                });
             }
             
             fetchQuiz();
@@ -236,16 +230,7 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, readingDura
                 });
                 setQuizStartTime(Date.now());
                 // Log quiz answers on load
-                analytics.track('quiz_answers_loaded', {
-                    userId: user?.uid,
-                    chapterId: bookData.id,
-                    chapterName: bookData.chapter_name,
-                    questions: shuffledQuestions.map((q: any) => ({
-                        question: q.question,
-                        options: q.options,
-                        correctAnswer: typeof q.correct === 'number' ? q.options[q.correct] : q.correct_answer || null
-                    }))
-                });
+          
                 
                 // Log correct answers for debugging
                 console.log('=== QUIZ CORRECT ANSWERS ===');
@@ -458,16 +443,7 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, readingDura
                     const confirmedLevel = await getCurrentReadingLevel();
                     // Set promotion state for UI display
                     setReadingLevelPromoted(newLevelNum);
-                    // Track reading level promotion
-                    analytics.track('reading_level_promoted', {
-                        userId: user?.uid,
-                        chapterId,
-                        previousLevel: currentLevelText,
-                        newLevel: newLevelText,
-                        readingSpeedWPM: readingSpeed,
-                        comprehensionPercentage: percentage,
-                        trigger: 'speed_and_comprehension'
-                    });
+
                     return newLevelNum;
                 }
             }
@@ -851,7 +827,7 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, readingDura
                             fontWeight: '600', 
                             textAlign: 'center' 
                         }}>
-                            💰 You earned {agreedAmount}! You can add it to your savings jars later.
+                            💰 You earned {Number(agreedAmount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}! You can add it to your savings jars later.
                         </Text>
                     </View>
                 )}
@@ -937,8 +913,8 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, readingDura
                             fontWeight: '600', 
                             textAlign: 'center' 
                         }}>
-                            💰 You've reached your daily earning limit of {dailyEarningLimitInfo.limit} coins! 
-                            You earned {dailyEarningLimitInfo.earnedToday} coins today. Come back tomorrow for more rewards!
+                            💰 You've reached your daily earning limit of {Number(dailyEarningLimitInfo.limit).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}! 
+                            You earned {Number(dailyEarningLimitInfo.earnedToday).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} today. Come back tomorrow for more rewards!
                         </Text>
                     </View>
                 )}
@@ -1008,7 +984,7 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, readingDura
                             <View style={{ alignItems: 'center', marginBottom: 24 }}>
                                 <Text style={{ fontSize: 64, marginBottom: 16 }}>💰</Text>
                                 <Text style={[styles.quizTitle, { color: colors.primary, marginBottom: 8, fontSize: 24, textAlign: 'center' }]}>
-                                    Congratulations! You earned {agreedAmount} coins!
+                                    Congratulations! You earned {Number(agreedAmount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}!
                                 </Text>
                                 <Text style={[styles.resultMessage, { color: colors.textSecondary, marginBottom: 16, fontSize: 16, textAlign: 'center' }]}>
                                     You scored {percentage.toFixed(0)}% on the quiz! Choose a savings jar to add your reward.
@@ -1030,7 +1006,7 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, readingDura
                                             fontWeight: '600', 
                                             textAlign: 'center' 
                                         }}>
-                                            📊 Daily Progress: {dailyEarningLimitInfo.earnedToday + parseFloat(agreedAmount)} / {dailyEarningLimitInfo.limit}
+                                            📊 Daily Progress: {(Number(dailyEarningLimitInfo.earnedToday) + Number(agreedAmount)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / {Number(dailyEarningLimitInfo.limit).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                         </Text>
                                     </View>
                                 )}
@@ -1147,7 +1123,7 @@ export function BookQuiz({ chapterId, startTime, onClose, wordCount, readingDura
                                         <ActivityIndicator color="#fff" />
                                     ) : (
                                         <Text style={[styles.modalButtonText, { color: '#fff' }]}> 
-                                            Add {agreedAmount} coins
+                                            Add {Number(agreedAmount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                         </Text>
                                     )}
                                 </Pressable>

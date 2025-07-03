@@ -86,7 +86,7 @@ export function Header({ selectedProfile }: HeaderProps) {
             Dimpo Reads <ThemedText style={styles.wave}>💰</ThemedText>
           </ThemedText>
           <ThemedText style={[styles.schoolText, { color: isDark ? '#9CA3AF' : '#64748B' }]}>
-          Read a story. Earn some coins.
+          Read a story. Earn some cash.
           </ThemedText>
         </View>
         <TouchableOpacity onPress={() => router.push('/profile')}>

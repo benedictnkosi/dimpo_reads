@@ -21,6 +21,7 @@ import { ContractAmountSelector } from './components/ContractAmountSelector';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { clearLearnerReadingTable } from '@/services/database';
 import { DailyLimitSelector } from './components/DailyLimitSelector';
+import { getDailyEarningLimit } from '@/services/dailyEarningLimit';
 
 interface ProfileInfo {
   name: string;
@@ -71,6 +72,7 @@ export default function ProfileScreen() {
   const [showAddProfileModal, setShowAddProfileModal] = useState(false);
   const [selectedAvatar, setSelectedAvatar] = useState('1');
   const [earningsLocked, setEarningsLocked] = useState(true);
+  const [dailyLimit, setDailyLimit] = useState<number>(0);
 
   // Reading level constants
   const READING_LEVELS = {
@@ -488,6 +490,15 @@ export default function ProfileScreen() {
     console.log('Daily earning limit updated to:', newLimit);
   };
 
+  // Load daily earning limit on mount and when selector closes
+  useEffect(() => {
+    const loadLimit = async () => {
+      const limit = await getDailyEarningLimit();
+      setDailyLimit(limit);
+    };
+    loadLimit();
+  }, [showDailyLimitSelector]);
+
   return (
     <LinearGradient
       colors={isDark ? ['#1E1E1E', '#121212'] : ['#FFFFFF', '#F8FAFC', '#F1F5F9']}
@@ -513,10 +524,18 @@ export default function ProfileScreen() {
                 </ThemedText>
               </View>
               <View style={styles.profileDetails}>
-                <ThemedText style={[styles.profileName, { color: colors.text }]}>
-                  {profileInfo?.name || 'Loading...'}
-                </ThemedText>
-                <ThemedText style={[styles.profileEmail, { color: colors.textSecondary }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <ThemedText style={[styles.profileName, { color: colors.text }]}> 
+                    {profileInfo?.name || 'Loading...'}
+                  </ThemedText>
+                  {profileInfo?.subscription && profileInfo.subscription !== 'free' && (
+                    <View style={styles.proBadge}>
+                      <ThemedText style={{fontSize: 22, marginRight: 4}}>👑</ThemedText>
+                      <ThemedText style={styles.proBadgeText}>Pro</ThemedText>
+                    </View>
+                  )}
+                </View>
+                <ThemedText style={[styles.profileEmail, { color: colors.textSecondary }]}> 
                   {user?.email || 'No email available'}
                 </ThemedText>
               </View>
@@ -679,7 +698,7 @@ export default function ProfileScreen() {
                 <View style={styles.settingRow}>
                   <View style={styles.settingInfo}>
                     <ThemedText style={[styles.settingLabel, { color: colors.text }]}>Earnings per Chapter</ThemedText>
-                    <ThemedText style={[styles.settingDescription, { color: colors.textSecondary }]}>Currently earning {agreedAmount} coins per completed chapter</ThemedText>
+                    <ThemedText style={[styles.settingDescription, { color: colors.textSecondary }]}>Currently earning {Number(agreedAmount).toFixed(2)} per completed chapter</ThemedText>
                   </View>
                   <TouchableOpacity
                     style={[
@@ -697,7 +716,8 @@ export default function ProfileScreen() {
                 <View style={styles.settingRow}>
                   <View style={styles.settingInfo}>
                     <ThemedText style={[styles.settingLabel, { color: colors.text }]}>Maximum Daily Earnings</ThemedText>
-                    <ThemedText style={[styles.settingDescription, { color: colors.textSecondary }]}>Set your daily earning limit</ThemedText>
+                    <ThemedText style={[styles.settingDescription, { color: colors.textSecondary }]}>{dailyLimit ? `Current limit: ${Number(dailyLimit).toFixed(2)}/day` : 'Loading...'}</ThemedText>
+                  
                   </View>
                   <TouchableOpacity
                     style={[
@@ -1006,14 +1026,14 @@ export default function ProfileScreen() {
         isVisible={showContractSelector}
         onClose={() => setShowContractSelector(false)}
         onAmountChanged={handleContractAmountChange}
-        currentAmount={agreedAmount}
+        currentAmount={Number(agreedAmount).toFixed(2)}
       />
 
       <DailyLimitSelector
         isVisible={showDailyLimitSelector}
         onClose={() => setShowDailyLimitSelector(false)}
         onLimitChanged={handleDailyLimitChange}
-        currentLimit={50}
+        currentLimit={dailyLimit}
       />
 
       <Modal
@@ -1679,5 +1699,32 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 2, height: 2 },
     textShadowRadius: 8,
     paddingTop: 50,
+  },
+  proBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FDE68A',
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    marginLeft: 8,
+    borderWidth: 1.5,
+    borderColor: '#F59E0B',
+    shadowColor: '#F59E0B',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 6,
+    elevation: 4,
+    minHeight: 32,
+  },
+  proBadgeText: {
+    color: '#B45309',
+    fontWeight: 'bold',
+    fontSize: 18,
+    letterSpacing: 0.5,
+    textShadowColor: '#fff8e1',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+    marginLeft: 6,
   },
 }); 

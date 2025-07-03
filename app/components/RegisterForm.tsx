@@ -48,7 +48,7 @@ export default function RegisterForm({ onboardingData, defaultMethod = 'email' }
 
     // Track page view when component mounts
     useEffect(() => {
-        analytics.track('langauges_register_page_viewed', {
+        analytics.track('reading_register_page_viewed', {
             registration_method: registrationMethod,
             has_onboarding_data: !!onboardingData,
             avatar_id: onboardingData?.avatar || 'none'
@@ -230,18 +230,6 @@ export default function RegisterForm({ onboardingData, defaultMethod = 'email' }
                 email: userEmail,
             });
 
-            // Track detailed registration success
-            analytics.track('languages_register_success', {
-                user_id: user.uid,
-                email: userEmail,
-                registration_method: registrationMethod,
-                has_onboarding_data: !!onboardingData,
-                avatar_id: onboardingData?.avatar || 'none',
-                curriculum: onboardingData?.curriculum || 'CAPS',
-                name_provided: !!name,
-                password_length: password.length
-            });
-
             // Show success toast
             Toast.show({
                 type: 'success',
@@ -270,7 +258,7 @@ export default function RegisterForm({ onboardingData, defaultMethod = 'email' }
             console.error('Registration error:', error);
             
             // Track registration error
-            analytics.track('languages_register_error', {
+            analytics.track('reading_register_error', {
                 registration_method: registrationMethod,
                 has_onboarding_data: !!onboardingData,
                 avatar_id: onboardingData?.avatar || 'none',
